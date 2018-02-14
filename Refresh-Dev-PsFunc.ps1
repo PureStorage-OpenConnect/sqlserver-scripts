@@ -8,12 +8,12 @@ This PowerShell function uses calls to the PowerShell SDK and dbatools module fu
 data (the destination) from another (the source).
 
 .EXAMPLE
-Refresh-TestDbFromProd -Database           SsdtDevOpsDemo `
-                       -SourceSqlInstance  SQL2016\DevOps_PRD `
-                       -DestSqlInstance    SQL2016\DevOps_TST `
-                       -PfaEndpoint        10.223.112.12 `
-                       -PfaUser            pureuser `
-                       -PfaPassword        P@ssw0rd99!
+Refresh-Dev-PsFunc -Database           SsdtDevOpsDemo `
+                   -SourceSqlInstance  SQL2016\DevOps_PRD `
+                   -DestSqlInstance    SQL2016\DevOps_TST `
+                   -PfaEndpoint        10.223.112.12 `
+                   -PfaUser            pureuser `
+                   -PfaPassword        P@ssw0rd99!
 
 .NOTES
 This script requires that both the dbatools and PureStorage SDK  modules available from the PowerShell gallery are
