@@ -52,31 +52,95 @@ function Refresh-TestDbFromProd
          ,[parameter(mandatory=$true)][string] $PfaPassword       
     )
 
-    $FlashArray = New-PfaArray –EndPoint $PfaEndpoint -UserName $PfaUser -Password (ConvertTo-SecureString -AsPlainText $PfaPassword -Force) -IgnoreCertificateError
+    try {
+        $FlashArray = New-PfaArray –EndPoint $PfaEndpoint -UserName $PfaUser -Password (ConvertTo-SecureString -AsPlainText $PfaPassword -Force) -IgnoreCertificateError
+    }
+    catch {
+        $ExceptionMessage = $_.Exception.Message
+        Write-Error "Failed to connect to FlashArray endpoint $PfaEndpoint with: $ExceptionMessage"
+        Return
+    }
 
-    $DestDb            = Get-DbaDatabase -sqlinstance $DestSqlInstance  -Database $Database
-    $DestDisk          = get-partition -DriveLetter $DestDb.PrimaryFilePath.Split(':')[0]| Get-Disk
-    $DestVolume        = Get-PfaVolumes -Array $FlashArray | Where-Object { $_.serial -eq $DestDisk.SerialNumber } | Select name
+    try {
+        $DestDb            = Get-DbaDatabase -sqlinstance $DestSqlInstance -Database $Database
+    }
+    catch {
+        $ExceptionMessage = $_.Exception.Message
+        Write-Error "Failed to connect to destination database $DestSqlInstance.$Database with: $ExceptionMessage"
+        Return
+    }
 
-    $SourceDb          = Get-DbaDatabase -sqlinstance $SourceSqlInstance -Database $Database
-    $SourceDisk        = Get-Partition -DriveLetter $SourceDb.PrimaryFilePath.Split(':')[0] | Get-Disk
-    $SourceVolume      = Get-PfaVolumes -Array $FlashArray | Where-Object { $_.serial -eq $SourceDisk.SerialNumber } | Select name
+    try {
+        $DestDisk          = Get-partition -DriveLetter $DestDb.PrimaryFilePath.Split(':')[0]| Get-Disk
+    }
+    catch {
+        $ExceptionMessage = $_.Exception.Message
+        Write-Error "Failed to determine destination database disk with: $ExceptionMessage"
+        Return
+    }
+
+    try {
+        $DestVolume        = Get-PfaVolumes -Array $FlashArray | Where-Object { $_.serial -eq $DestDisk.SerialNumber } | Select name
+    }
+    catch {
+        $ExceptionMessage = $_.Exception.Message
+        Write-Error "Failed to determine destination FlashArray volume with: $ExceptionMessage"
+        Return
+    }
+
+    try {
+        $SourceDb          = Get-DbaDatabase -sqlinstance $SourceSqlInstance -Database $Database
+    }
+    catch {
+        $ExceptionMessage = $_.Exception.Message
+        Write-Error "Failed to connect to source database $SourceSqlInstance.$Database with: $ExceptionMessage"
+        Return
+    }
+
+    try {
+        $SourceDisk        = Get-Partition -DriveLetter $SourceDb.PrimaryFilePath.Split(':')[0] | Get-Disk
+    }
+    catch {
+        $ExceptionMessage = $_.Exception.Message
+        Write-Error "Failed to determine source disk with: $ExceptionMessage"
+        Return
+    }
+
+    try {
+        $SourceVolume      = Get-PfaVolumes -Array $FlashArray | Where-Object { $_.serial -eq $SourceDisk.SerialNumber } | Select name
+    }
+    catch {
+        $ExceptionMessage = $_.Exception.Message
+        Write-Error "Failed to determine source volume with: $ExceptionMessage"
+        Return
+    }
 
     try {
         $DestDb.SetOffline()
     }
     catch {
         $ExceptionMessage = $_.Exception.Message
-        Write-Warning "Failed to offline database $Database with: $ExceptionMessage"
+        Write-Error "Failed to offline database $Database with: $ExceptionMessage"
         Return
     }
 
     try {
-        Set-Disk -Number $DestDisk.Number -IsOffline $True
+        $TargetServer  = (Connect-DbaInstance -SqlInstance $DestSqlInstance).ComputerNamePhysicalNetBIOS
+    }
+    catch {
+        Write-Error "Failed to determine target server name with: $ExceptionMessage"        
+    }
+
+    $OfflineDestDisk = { param ( $DiskNumber, $Status ) 
+        Set-Disk -Number $DiskNumber -IsOffline $Status
+    }
+
+    try {
+        Invoke-Command -ComputerName $TargetServer -ScriptBlock $OfflineDestDisk -ArgumentList $DestDisk.Number, $True
     }
     catch {
         $ExceptionMessage = $_.Exception.Message
-        Write-Warning "Failed to offline disk with : $ExceptionMessage" 
+        Write-Error "Failed to offline disk with : $ExceptionMessage" 
         Return
     }
 
@@ -85,18 +149,18 @@ function Refresh-TestDbFromProd
     }
     catch {
         $ExceptionMessage = $_.Exception.Message
-        Write-Warning "Failed to refresh test database volume with : $ExceptionMessage" 
+        Write-Error "Failed to refresh test database volume with : $ExceptionMessage" 
         Set-Disk -Number $DestDisk.Number -IsOffline $False
         $DestDb.SetOnline()
         Return
     }
 
     try {
-        Set-Disk -Number $DestDisk.Number -IsOffline $False
+        Invoke-Command -ComputerName $TargetServer -ScriptBlock $OfflineDestDisk -ArgumentList $DestDisk.Number, $False
     }
     catch {
         $ExceptionMessage = $_.Exception.Message
-        Write-Warning "Failed to online disk with : $ExceptionMessage" 
+        Write-Error "Failed to online disk with : $ExceptionMessage" 
         Return
     }
 
@@ -105,7 +169,7 @@ function Refresh-TestDbFromProd
     }
     catch {
         $ExceptionMessage = $_.Exception.Message
-        Write-Warning "Failed to online database $Database with: $ExceptionMessage"
+        Write-Error "Failed to online database $Database with: $ExceptionMessage"
         Return
     }
 }
