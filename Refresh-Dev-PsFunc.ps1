@@ -41,7 +41,7 @@ limitations under the License.
 TBD
 
 #>
-function Refresh-TestDbFromProd
+function Refresh-Dev-PsFunc
 {
     param(
           [parameter(mandatory=$true)][string] $Database          
@@ -62,7 +62,7 @@ function Refresh-TestDbFromProd
     }
 
     try {
-        $DestDb            = Get-DbaDatabase -sqlinstance $DestSqlInstance -Database $Database
+        $DestDb = Get-DbaDatabase -sqlinstance $DestSqlInstance -Database $Database
     }
     catch {
         $ExceptionMessage = $_.Exception.Message
@@ -71,16 +71,32 @@ function Refresh-TestDbFromProd
     }
 
     try {
-        $DestDisk          = Get-partition -DriveLetter $DestDb.PrimaryFilePath.Split(':')[0]| Get-Disk
+        $TargetServer = (Connect-DbaInstance -SqlInstance $DestSqlInstance).ComputerNamePhysicalNetBIOS
     }
     catch {
-        $ExceptionMessage = $_.Exception.Message
+        Write-Error "Failed to determine target server name with: $ExceptionMessage"        
+    }
+
+    $OfflineDestDisk = { param ( $DiskNumber, $Status ) 
+        Set-Disk -Number $DiskNumber -IsOffline $Status
+    }
+
+    $GetDbDisk = { param ( $Db ) 
+        $DbDisk = Get-partition -DriveLetter $Db.PrimaryFilePath.Split(':')[0]| Get-Disk
+        return $DbDisk
+    }
+
+    try {
+        $DestDisk = Invoke-Command -ComputerName $TargetServer -ScriptBlock $GetDbDisk -ArgumentList $DestDb
+    }
+    catch {
+        $ExceptionMessage  = $_.Exception.Message
         Write-Error "Failed to determine destination database disk with: $ExceptionMessage"
         Return
     }
 
     try {
-        $DestVolume        = Get-PfaVolumes -Array $FlashArray | Where-Object { $_.serial -eq $DestDisk.SerialNumber } | Select name
+        $DestVolume = Get-PfaVolumes -Array $FlashArray | Where-Object { $_.serial -eq $DestDisk.SerialNumber } | Select name
     }
     catch {
         $ExceptionMessage = $_.Exception.Message
@@ -89,7 +105,7 @@ function Refresh-TestDbFromProd
     }
 
     try {
-        $SourceDb          = Get-DbaDatabase -sqlinstance $SourceSqlInstance -Database $Database
+        $SourceDb = Get-DbaDatabase -sqlinstance $SourceSqlInstance -Database $Database
     }
     catch {
         $ExceptionMessage = $_.Exception.Message
@@ -98,7 +114,18 @@ function Refresh-TestDbFromProd
     }
 
     try {
-        $SourceDisk        = Get-Partition -DriveLetter $SourceDb.PrimaryFilePath.Split(':')[0] | Get-Disk
+        $SourceServer = (Connect-DbaInstance -SqlInstance $SourceSqlInstance).ComputerNamePhysicalNetBIOS
+    }
+    catch {
+        Write-Error "Failed to determine target server name with: $ExceptionMessage"        
+    }
+
+    $OfflineDestDisk = { param ( $DiskNumber, $Status ) 
+        Set-Disk -Number $DiskNumber -IsOffline $Status
+    }
+
+    try {
+        $SourceDisk = Invoke-Command -ComputerName $SourceServer -ScriptBlock $GetDbDisk -ArgumentList $SourceDb
     }
     catch {
         $ExceptionMessage = $_.Exception.Message
@@ -107,7 +134,7 @@ function Refresh-TestDbFromProd
     }
 
     try {
-        $SourceVolume      = Get-PfaVolumes -Array $FlashArray | Where-Object { $_.serial -eq $SourceDisk.SerialNumber } | Select name
+        $SourceVolume = Get-PfaVolumes -Array $FlashArray | Where-Object { $_.serial -eq $SourceDisk.SerialNumber } | Select name
     }
     catch {
         $ExceptionMessage = $_.Exception.Message
@@ -122,17 +149,6 @@ function Refresh-TestDbFromProd
         $ExceptionMessage = $_.Exception.Message
         Write-Error "Failed to offline database $Database with: $ExceptionMessage"
         Return
-    }
-
-    try {
-        $TargetServer  = (Connect-DbaInstance -SqlInstance $DestSqlInstance).ComputerNamePhysicalNetBIOS
-    }
-    catch {
-        Write-Error "Failed to determine target server name with: $ExceptionMessage"        
-    }
-
-    $OfflineDestDisk = { param ( $DiskNumber, $Status ) 
-        Set-Disk -Number $DiskNumber -IsOffline $Status
     }
 
     try {
@@ -172,4 +188,4 @@ function Refresh-TestDbFromProd
         Write-Error "Failed to online database $Database with: $ExceptionMessage"
         Return
     }
-}
+} 
