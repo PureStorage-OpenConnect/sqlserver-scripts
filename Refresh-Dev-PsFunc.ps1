@@ -29,6 +29,7 @@ Refresh-Dev-PsFunc-V2 -Database        tpch-no-compression `
                    -PfaPassword        pureuser `
                    -RefreshFromSnapshot
 
+.EXAMPLE
 # Refresh a single database from a snapshot of the database specified by the RefreshSource parameter
 $Targets = @("Z-STN-WIN2016-A\DEVOPSTST")
 Refresh-Dev-PsFunc-V2 -Database        tpch-no-compression `
