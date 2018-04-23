@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-A PowerShell function to refresh one SQL Server database (the destination) from either a target snapshot or 
-database  (the source).
+A PowerShell function to refresh one or more SQL Server databases (the destination) from either a snapshot or 
+database.
 
 .DESCRIPTION
 This PowerShell function uses calls to the PowerShell SDK and dbatools module functions to refresh one SQL Server
