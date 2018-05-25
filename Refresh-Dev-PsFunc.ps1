@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
 A PowerShell function to refresh one or more SQL Server databases (the destination) from either a snapshot or 
-database.
+database  (the source).
 
 .DESCRIPTION
 This PowerShell function uses calls to the PowerShell SDK and dbatools module functions to refresh one SQL Server
@@ -92,7 +92,7 @@ function Refresh-Dev-PsFunc
 
     $StartMs = Get-Date
 
-    if ( ! ($RefreshFromSnapshot.IsPresent) ) { 
+    if ( $RefreshFromSnapshot.IsPresent.Equals($false) ) { 
         Write-Host "Connecting to source SQL Server instance" -ForegroundColor Yellow
 
         try {
@@ -128,7 +128,19 @@ function Refresh-Dev-PsFunc
         return $DbDisk
     }
 
-    if ( ! ($RefreshFromSnapshot.IsPresent) ) { 
+    if ( $RefreshFromSnapshot.IsPresent ) { 
+        $Snapshots  = Get-PfaAllVolumeSnapshots $FlashArray
+
+        for ($i=0; $i -lt $Snapshots.length; $i++) {
+            if ($Snapshots[$i].source -eq $RefreshSource) {
+	            $i
+                $Snapshots[$i]
+            }
+        }
+            
+        $SnapshotId = Read-Host -Prompt 'Enter the number of the snapshot to be used for the database refresh'
+    }
+    else {
         try {
             $SourceDisk        = Invoke-Command -ComputerName $SourceServer -ScriptBlock $GetDbDisk -ArgumentList $SourceDb
         }
@@ -147,18 +159,6 @@ function Refresh-Dev-PsFunc
             Return
         }
     } 
-    else {
-        $Snapshots  = Get-PfaAllVolumeSnapshots $FlashArray
-
-        for ($i=0; $i -lt $Snapshots.length; $i++) {
-            if ($Snapshots[$i].source -eq $RefreshSource) {
-	            $i
-                $Snapshots[$i]
-            }
-        }
-            
-        $SnapshotId = Read-Host -Prompt 'Enter the number of the snapshot to be used for the database refresh'
-    }
 
     Foreach($DestSqlInstance in $DestSqlInstances) {
         Write-Host "Connecting to destination SQL Server instance" -ForegroundColor Yellow
@@ -227,17 +227,17 @@ function Refresh-Dev-PsFunc
             Return
         }
 
-        Write-Host "Overwriting desitnation FlashArray volume with a copy of the source volume" -ForegroundColor Yellow
-
         $StartCopyVolMs = Get-Date
 
         try {
-            if ( ! ($RefreshFromSnapshot.IsPresent) ) {
-               New-PfaVolume -Array $FlashArray -VolumeName $DestVolume.name -Source $SourceVolume.name -Overwrite
-            }
-            else {
+           if ( $RefreshFromSnapshot.IsPresent ) {
+               Write-Host "Snap -> DB refresh: Overwriting destination FlashArray volume <" $DestVolume.name "> with a copy of the source volume <" $Snapshots[$SnapshotId].name ">" -ForegroundColor Yellow
                New-PfaVolume -Array $FlashArray -VolumeName $DestVolume.name -Source $Snapshots[$SnapshotId].name -Overwrite
-            }
+           }
+           else {
+               Write-Host "DB -> DB refresh  : Overwriting destination FlashArray volume <" $DestVolume.name "> with a copy of the source volume <" $SourceVolume.name ">" -ForegroundColor Yellow
+               New-PfaVolume -Array $FlashArray -VolumeName $DestVolume.name -Source $SourceVolume.name -Overwrite
+           }
         }
         catch {
             $ExceptionMessage = $_.Exception.Message
