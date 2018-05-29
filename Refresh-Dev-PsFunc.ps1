@@ -1,17 +1,41 @@
 <#
 .SYNOPSIS
 A PowerShell function to refresh one or more SQL Server databases (the destination) from either a snapshot or 
-database  (the source).
+database.
 
 .DESCRIPTION
-This PowerShell function uses calls to the PowerShell SDK and dbatools module functions to refresh one SQL Server
-data (the destination) from another (the source).
+This PowerShell function uses calls to the PowerShell SDK and dbatools module functions to refresh one or more SQL Server
+server databases either from a snapshot (either supplied explicitly or from a list associated with a volume) or from a source
+database directly. 
 
 .EXAMPLE
-# Refresh a single database from a snapshot belonging to the volume specified by the RefreshSource parameter
+# Refresh a single database from a snapshot selected from a list of snapshots associated with the volume specified by the 
+# -RefreshSource parameter.
 $Targets = @("Z-STN-WIN2016-A\DEVOPSTST")
-Refresh-Dev-PsFunc-V2 -Database        tpch-no-compression `
+Refresh-Dev-PsFunc -RefreshDatabase    refresh-database `
                    -RefreshSource      z-sql2016-devops-prd `
+                   -DestSqlInstance    $Targets `
+                   -PfaEndpoint        10.225.112.10 `
+                   -PfaUser            pureuser `
+                   -PfaPassword        pureuser `
+                   -PromptForSnapshot
+
+.EXAMPLE
+# Refresh multiple databases from a snapshot selected from a list of snapshots associated with the volume specified by the 
+# -RefreshSource parameter.$Targets = @("Z-STN-WIN2016-A\DEVOPSTST", "Z-STN-WIN2016-A\DEVOPSDEV")
+Refresh-Dev-PsFunc -RefreshDatabase    refresh-database `
+                   -RefreshSource      z-sql2016-devops-prd `
+                   -DestSqlInstance    $Targets `
+                   -PfaEndpoint        10.225.112.10 `
+                   -PfaUser            pureuser `
+                   -PfaPassword        pureuser `
+                   -PromptForSnapshot
+
+.EXAMPLE
+# Refresh a single database using the snapshot specified by the RefreshSource parameter:
+$Targets = @("Z-STN-WIN2016-A\DEVOPSTST")
+Refresh-Dev-PsFunc -RefreshDatabase    refresh-database `
+                   -RefreshSource      source-snap `
                    -DestSqlInstance    $Targets `
                    -PfaEndpoint        10.225.112.10 `
                    -PfaUser            pureuser `
@@ -19,31 +43,31 @@ Refresh-Dev-PsFunc-V2 -Database        tpch-no-compression `
                    -RefreshFromSnapshot
 
 .EXAMPLE
-# Refresh a multiple databases from a snapshot belonging to the volume specified by the RefreshSource parameter
+# Refresh multiple databases using the snapshot specified by the RefreshSource parameter:
 $Targets = @("Z-STN-WIN2016-A\DEVOPSTST", "Z-STN-WIN2016-A\DEVOPSDEV")
-Refresh-Dev-PsFunc-V2 -Database        tpch-no-compression `
-                   -RefreshSource      z-sql2016-devops-prd `
+Refresh-Dev-PsFunc -RefreshDatabase    refresh-database
+                   -RefreshSource      source-snap `
                    -DestSqlInstance    $Targets `
                    -PfaEndpoint        10.225.112.10 `
                    -PfaUser            pureuser `
                    -PfaPassword        pureuser `
                    -RefreshFromSnapshot
 
-.EXAMPLE
-# Refresh a single database from a snapshot of the database specified by the RefreshSource parameter
+#.EXAMPLE
+# Refresh a single database from the database specified by the SourceDatabase parameter residing on the instance specified by RefreshSource
 $Targets = @("Z-STN-WIN2016-A\DEVOPSTST")
-Refresh-Dev-PsFunc-V2 -Database        tpch-no-compression `
-                   -RefreshSource      Z-STN-WIN2016-A\DEVOPSPRD `
+Refresh-Dev-PsFunc -$RefreshDatabase   refresh-database `
+                   -RefreshSource      z-sql-prd `
                    -DestSqlInstance    $Targets `
                    -PfaEndpoint        10.225.112.10 `
                    -PfaUser            pureuser `
                    -PfaPassword        pureuser 
 
 .EXAMPLE
-# Refresh a multiple databases from the database specified by the RefreshSource parameter
+# Refresh multiple databases from the database specified by the SourceDatabase parameter residing on the instance specified by RefreshSource 
 $Targets = @("Z-STN-WIN2016-A\DEVOPSTST", "Z-STN-WIN2016-A\DEVOPSDEV")
-Refresh-Dev-PsFunc-V2 -Database        tpch-no-compression `
-                   -RefreshSource      z-sql2016-devops-prd `
+Refresh-Dev-PsFunc -$RefreshDatabase   refresh-database `
+                   -RefreshSource      z-sql-prd `
                    -DestSqlInstance    $Targets `
                    -PfaEndpoint        10.225.112.10 `
                    -PfaUser            pureuser `
@@ -81,22 +105,23 @@ TBD
 function Refresh-Dev-PsFunc
 {
     param(
-          [parameter(mandatory=$true)]  [string]   $Database          
+          [parameter(mandatory=$true)]  [string]   $RefreshDatabase          
          ,[parameter(mandatory=$true)]  [string]   $RefreshSource 
          ,[parameter(mandatory=$true)]  [string[]] $DestSqlInstances   
          ,[parameter(mandatory=$true)]  [string]   $PfaEndpoint       
          ,[parameter(mandatory=$true)]  [string]   $PfaUser           
          ,[parameter(mandatory=$true)]  [string]   $PfaPassword       
+         ,[parameter(mandatory=$false)] [switch]   $PromptForSnapshot
          ,[parameter(mandatory=$false)] [switch]   $RefreshFromSnapshot
     )
 
     $StartMs = Get-Date
 
-    if ( $RefreshFromSnapshot.IsPresent.Equals($false) ) { 
+    if ( $PromptForSnapshot.IsPresent.Equals($false) -And $RefreshFromSnapshot.IsPresent.Equals($false) ) { 
         Write-Host "Connecting to source SQL Server instance" -ForegroundColor Yellow
 
         try {
-            $SourceDb          = Get-DbaDatabase -sqlinstance $RefreshSource -Database $Database
+            $SourceDb          = Get-DbaDatabase -sqlinstance $RefreshSource -Database $RefreshDatabase
         }
         catch {
             $ExceptionMessage = $_.Exception.Message
@@ -128,19 +153,19 @@ function Refresh-Dev-PsFunc
         return $DbDisk
     }
 
-    if ( $RefreshFromSnapshot.IsPresent ) { 
-        $Snapshots  = Get-PfaAllVolumeSnapshots $FlashArray
+    $Snapshots = $(Get-PfaAllVolumeSnapshots $FlashArray)
+    $FilteredSnapshots = $Snapshots.where({ ([string]$_.Source) -eq $RefreshSource })
 
-        for ($i=0; $i -lt $Snapshots.length; $i++) {
-            if ($Snapshots[$i].source -eq $RefreshSource) {
-	            $i
-                $Snapshots[$i]
-            }
+    if ( $PromptForSnapshot.IsPresent ) { 
+        Write-Host ' '
+        for ($i=0; $i -lt $FilteredSnapshots.Count; $i++) {
+            Write-Host 'Snapshot ' $i.ToString()
+            $FilteredSnapshots[$i]
         }
-            
+                   
         $SnapshotId = Read-Host -Prompt 'Enter the number of the snapshot to be used for the database refresh'
     }
-    else {
+    elseif ( $RefreshFromSnapshot.IsPresent.Equals( $false ) ) {
         try {
             $SourceDisk        = Invoke-Command -ComputerName $SourceServer -ScriptBlock $GetDbDisk -ArgumentList $SourceDb
         }
@@ -164,7 +189,7 @@ function Refresh-Dev-PsFunc
         Write-Host "Connecting to destination SQL Server instance" -ForegroundColor Yellow
 
         try {
-            $DestDb            = Get-DbaDatabase -sqlinstance $DestSqlInstance -Database $Database
+            $DestDb            = Get-DbaDatabase -sqlinstance $DestSqlInstance -Database $RefreshDatabase
         }
         catch {
             $ExceptionMessage = $_.Exception.Message
@@ -227,12 +252,18 @@ function Refresh-Dev-PsFunc
             Return
         }
 
+
         $StartCopyVolMs = Get-Date
+        Write-Host ' '
 
         try {
-           if ( $RefreshFromSnapshot.IsPresent ) {
-               Write-Host "Snap -> DB refresh: Overwriting destination FlashArray volume <" $DestVolume.name "> with a copy of the source volume <" $Snapshots[$SnapshotId].name ">" -ForegroundColor Yellow
-               New-PfaVolume -Array $FlashArray -VolumeName $DestVolume.name -Source $Snapshots[$SnapshotId].name -Overwrite
+           if ( $PromptForSnapshot.IsPresent ) {
+               Write-Host "Snap -> DB refresh: Overwriting destination FlashArray volume <" $DestVolume.name "> with snapshot <" $FilteredSnapshots[$SnapshotId].name ">" -ForegroundColor Yellow
+               New-PfaVolume -Array $FlashArray -VolumeName $DestVolume.name -Source $FilteredSnapshots[$SnapshotId].name -Overwrite
+           }
+           elseif ( $RefreshFromSnapshot.IsPresent ) {
+               Write-Host "DB -> DB refresh  : Overwriting destination FlashArray volume <" $DestVolume.name "> with snapshot <" $RefreshSource ">" -ForegroundColor Yellow
+               New-PfaVolume -Array $FlashArray -VolumeName $DestVolume.name -Source $RefreshSource -Overwrite
            }
            else {
                Write-Host "DB -> DB refresh  : Overwriting destination FlashArray volume <" $DestVolume.name "> with a copy of the source volume <" $SourceVolume.name ">" -ForegroundColor Yellow
