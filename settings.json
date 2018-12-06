@@ -2,6 +2,6 @@
     "id": "sqlserver-scripts",
     "filter": "microsoft database",
     "image": "http://code.purestorage.com/images/5_Powershell-Toolkit.png",
-    "featured": 0,
-    "priority": 3
+    "featured": 1,
+    "priority": 2
 }
