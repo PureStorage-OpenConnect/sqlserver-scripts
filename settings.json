@@ -1,7 +1,7 @@
 {
     "id": "sqlserver-scripts",
     "filter": "microsoft database",
-    "image": "http://code.purestorage.com/images/5_Powershell-Toolkit.png",
+    "image": "https://code.purestorage.com/images/4_oracle%20script.png",
     "featured": 1,
     "priority": 1
 }
