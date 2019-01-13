@@ -1,5 +1,5 @@
 {
-    "id": "SQLServer-Scripts",
+    "id": "sqlserver-scripts",
     "filter": "microsoft database",
     "image": "http://code.purestorage.com/images/5_Powershell-Toolkit.png",
     "featured": 1,
