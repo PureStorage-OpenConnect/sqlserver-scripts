@@ -2,6 +2,6 @@
     "id": "sqlserver-scripts",
     "filter": "microsoft database",
     "image": "https://code.purestorage.com/images/4_oracle%20script.png",
-    "featured": 1,
-    "priority": 1
+    "featured": 0,
+    "priority": 3
 }
