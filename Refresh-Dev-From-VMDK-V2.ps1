@@ -6,12 +6,32 @@
 # Updated by: Jase McCarty                                                                                                   #
 # Twitter:    @jasemccarty                                                                                                   #
 #                                                                                                                            #
-# Requirements:                                                                                                              #
-#    Must be executed from a Windows system/account that has credentials on the Target SQL server                            #
-#    $TargetServer must have the Guest OS Hostname (MyTestServer in this example)                                            #
-#    Must know the vVol Volume Group & volume names for the source & target VMs                                              #
-#    SQLPROD-VG/VVOL-NAME for the Source VM and SQLTEST-VG/VVOLNAME for the Target VM                                        #
-#    Target VM vVol Device number for each of the Target VM vVol Disks (Windows Device Number)                               #
+# This script will:                                                                                                          #
+# - Bring a SQL Database offline in a Target VM                                                                              #
+# - Offline and detach the SQL data disks                                                                                    #
+# - Clone a datastore that has the data disks from a similar SQL VM                                                          #
+# - Attach the snapshotted datastore, and rename it to the previous datastore name                                           #
+# - Rename the disks from the Source VM to that of the Target VM                                                             #
+# - Attach the disks to the Target VM                                                                                        #
+# - Bring the data disks and the SQL database online                                                                         #
+#                                                                                                                            #
+# This can be run directly from PowerCLI or from a standard PowerShell prompt.                                               #
+# PowerCLI must be installed on the local host regardless.                                                                   #
+#                                                                                                                            #
+# Supports:                                                                                                                  #
+# - FlashArray 400 Series, //m, //x, & //c                                                                                   #
+# - vCenter 6.5 and later                                                                                                    #
+# - PowerCLI 10 or later required                                                                                            #
+# - PowerShell Core supported                                                                                                #
+# - PowerShell Remote Sessions require WSMAN support (Such as PSWSMan 2.0 for Mac)                                           #
+#                                                                                                                            #
+# Assumptions:                                                                                                               #
+# - Source SQL VM has the C: drive on any datastore                                                                          #
+# - Source SQL VM has data disks on a dedicated vmfs datastore on FlashArray                                                 #
+# - Target SQL VM has the C: drive on any datastore                                                                          #
+# - Target SQL VM has data disks on a dedicated vmfs datastore on FlashArray                                                 #
+# - The FlashArray where work is being performed on contains the volumes that both the Source & Target VM's data disks are on#
+# - System executing this script is joined to the same Active Directory Domain as the Source and Target SQL VMs              #
 #                                                                                                                            #
 # Drives are taken offline by their serial number/UUID                                                                       #
 # This scripts are offered "as is" with no warranty.  While this script is tested and working in my environment, it is       #
@@ -19,34 +39,6 @@
 # script/commands provided here without any written permission, I, Jase McCarty, and Pure Storage, will not be liable for    #
 # any damage or loss to the system.                                                                                          #
 ##############################################################################################################################
-
-This script will:
-- Bring a SQL Database offline in a Target VM
-- Offline and detach the SQL data disks 
-- Clone a datastore that has the data disks from a similar SQL VM
-- Attach the snapshotted datastore, and rename it to the previous datastore name
-- Rename the disks from the Source VM to that of the Target VM
-- Attach the disks to the Target VM
-- Bring the data disks and the SQL database online
-
-This can be run directly from PowerCLI or from a standard PowerShell prompt. PowerCLI must be installed on the local host regardless.
-
-Supports:
-- FlashArray 400 Series, //m, //x, & //c
-- vCenter 6.5 and later
-- PowerCLI 10 or later required
-- PowerShell Core supported
-- PowerShell Remote Sessions require WSMAN support (Such as PSWSMan 2.0 for Mac)
-
-Assumptions:
-- Source SQL VM has the C: drive on any datastore
-- Source SQL VM has data disks on a dedicated vmfs datastore on FlashArray
-- Target SQL VM has the C: drive on any datastore
-- Target SQL VM has data disks on a dedicated vmfs datastore on FlashArray
-- The FlashArray where work is being performed on contains the volumes that
-  both the Source VM & Target VM's data disks reside on
-- System executing this script is joined to the same Active Directory Domain 
-  as the Source and Target SQL VMs
 #>
 
 # Configuring the script to use parameters so it can be reused more easily
