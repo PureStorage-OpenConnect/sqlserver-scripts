@@ -1,13 +1,11 @@
-<p align="center"><img src="purelogo.png"> </p>
-
-# Pure Storage OpenConnect SQL Server Scripts
-This repository contains various scripts created for use with SQL Server, and also with the Pure Storage SSMS extension and BackupSDK.
+# Pure Storage OpenConnect SQL Server Scripts - Availability Group Recovery Solutions
+This repository contains scripts that are included in the Pure Storage Support article linked below.
 
 <!-- wp:separator -->
 <hr class="wp-block-separator"/>
 <!-- /wp:separator -->
 
- **Link to the Pure Storage Microsoft Platform Guide - [Microsoft Platform Guide](https://support.purestorage.com/Solutions/Microsoft_Platform_Guide)**
+ **Link to the SQL Server Availability Groups support article - [Recovery_Solutions_with_SQL_Alwayson_Availability_Groups](https://support.purestorage.com/Solutions/Microsoft_Platform_Guide/Microsoft_SQL_Server/Recovery_Solutions_with_SQL_Alwayson_Availability_Groups)**
 
 <!-- wp:separator -->
 <hr class="wp-block-separator"/>
