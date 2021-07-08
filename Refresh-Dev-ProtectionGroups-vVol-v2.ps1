@@ -19,6 +19,7 @@
 # Updates - 13 NOV 2020                                                                                                      #
 #    - Added Variable Section                                                                                                #
 #    - Loop through volumes, devices, databases                                                                              #
+#    - PowerShell Desktop is supported. PowerShell Core is not                                                               #
 ##############################################################################################################################
 
 # Variables Section
