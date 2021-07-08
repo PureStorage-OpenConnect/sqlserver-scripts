@@ -24,8 +24,8 @@
 ##############################################################################################################################
 
 # Variables Section
-$TargetServer  = 'JSQLTEST'                                # Configure the target SQL Server 
-$EndPoint      = 'array.fqdn.domain'                       # FQDN or IP of the FlashArray that the SQL Server resides on
+$TargetServer  = 'JSQLTEST.FSA.LAB'                        # Configure the target SQL Server 
+$EndPoint      = 'sn1-m70-f06-33.puretec.purestorage.com'  # FQDN or IP of the FlashArray that the SQL Server resides on
 $PGroupName    = 'sql-pg-demo-m-m'                         # Protection Group Name 
 
 # Name(s) of the SQL database(s) to take offline
@@ -43,11 +43,11 @@ $databases     = @('FT_Demo')
 # It should not be necessary to make any changes below    #
 ###########################################################
 
-# Ensure the Pure Storage PowerShell SDK is loaded
-Import-Module PureStoragePowerShellSDK
+# Configure the target SQL Server 
+$TargetServer = 'JSQLTEST'
 
 # Create a session to the target server
-$TargetServerSession = New-PSSession -ComputerName $TargetServer #-Credential (Get-Credential)
+$TargetServerSession = New-PSSession -ComputerName $TargetServer
 
 # Import the SQLPS module so SQL commands are available
 Import-Module SQLPS -PSSession $TargetServerSession -DisableNameChecking
@@ -55,15 +55,20 @@ Import-Module SQLPS -PSSession $TargetServerSession -DisableNameChecking
 # Offline the database(s)
 Write-Warning "Offlining the target database(s)..."
 Foreach ($database in $databases) {
-    $Scriptblock = "Invoke-Sqlcmd -ServerInstance . -Database master -Query  'ALTER DATABASE $database SET OFFLINE WITH ROLLBACK IMMEDIATE'"
-    Invoke-Command -Session $TargetServerSession -ScriptBlock {$Scriptblock}
+    Write-Host "Offlining $database"
+# Offline the database
+Write-Warning "Offlining the target database..."
+    $Query = "ALTER DATABASE " + $($database) + " SET OFFLINE WITH ROLLBACK IMMEDIATE"
+    Invoke-Command -Session $TargetServerSession -ScriptBlock {Param($querytask) Invoke-Sqlcmd -ServerInstance . -Database master -Query $querytask} -ArgumentList ($Query)
 }
 
 # Offline the volumes that have SQL data
 Write-Warning "Offlining the target volume(s)..." 
 Foreach ($targetdevice in $targetdevices) {
-    Invoke-Command -Session $TargetServerSession -ScriptBlock { Get-Disk | ? { $_.Number -eq $targetdevice } | Set-Disk -IsOffline $True }
+    Write-Host "Offlining Disk $($targetdevice)"
+    Invoke-Command -Session $TargetServerSession -ScriptBlock {Param($currentdisk) Get-Disk | ? { $_.Number -eq $($currentdisk) } | Set-Disk -IsOffline $True } -ArgumentList ($targetdevice)
 }
+
 
 If ($DefaultFlashArray) {
 
@@ -88,7 +93,6 @@ If ($PGroupName -like "*:*") {
 } else {
     # Get the most recent snapshot
     Write-Warning "Obtaining the most recent snapshot for the protection group..."
-    
     #$MostRecentSnapshot = Get-PfaProtectionGroupSnapshots -Array $FlashArray -Name $PGroupName | Sort-Object created -Descending | Select -Property name -First 1
     # Updated to work with PowerShell Core and New-PfaRestOperation
     $LatestSnapshot = New-PfaRestOperation -ResourceType volume -RestOperationType GET -Flasharray $DefaultFlashArray -SkipCertificateCheck -QueryFilter "?snap=true&pgrouplist=$($PGroupName)" | Where-Object {$_.source -in $sourcevolumes} | Sort-Object Created -Descending | Select-Object -First 1
@@ -98,6 +102,7 @@ If ($PGroupName -like "*:*") {
         Created = $LatestSnapshot.created
         Name = $LatestSnapshot.name.split(".")[0] + "." + $LatestSnapshot.name.split(".")[1]
     }
+
 }
 
 
@@ -106,21 +111,21 @@ Write-Warning "Overwriting the target database volumes with a copies of the volu
 Foreach ($targetvolume in $targetvolumes) {
     $sourcevolume = $MostRecentSnapshot.name + "." + $sourcevolumes[$targetvolumes.IndexOf($targetvolume)]
     #New-PfaVolume -Array $FlashArray -VolumeName $targetvolume -Source $sourcevolume -Overwrite
-    # Updated to work with PowerShell Core and New-PfaRestOperation
     New-PfaRestOperation -ResourceType volume/$($targetvolume) -RestOperationType POST -Flasharray $DefaultFlashArray -SkipCertificateCheck -jsonBody "{`"overwrite`":true,`"source`":`"$($sourcevolume)`"}"             
 }
 
 # Online the volume(s)
 Write-Warning "Onlining the target volumes..." 
 Foreach ($targetdevice in $targetdevices) {
-    Invoke-Command -Session $TargetServerSession -ScriptBlock { Get-Disk | ? { $_.Number -eq $targetdevice } | Set-Disk -IsOffline $True }
+    Write-Host "Onlining Disk $($targetdevice)"
+    Invoke-Command -Session $TargetServerSession -ScriptBlock {Param($currentdisk) Get-Disk | ? { $_.Number -eq $($currentdisk) } | Set-Disk -IsOffline $False } -ArgumentList ($targetdevice)
 }
 
 # Online the database
-Write-Warning "Onlining the target database..." 
 Foreach ($database in $databases) {
-    $Scriptblock = "Invoke-Sqlcmd -ServerInstance . -Database master -Query  'ALTER DATABASE $database SET ONLINE WITH ROLLBACK IMMEDIATE'"
-    Invoke-Command -Session $TargetServerSession -ScriptBlock {$Scriptblock}
+    Write-Host "Onlining $database"
+    $Query = "ALTER DATABASE " + $($database) + " SET ONLINE WITH ROLLBACK IMMEDIATE"
+    Invoke-Command -Session $TargetServerSession -ScriptBlock {Param($querytask) Invoke-Sqlcmd -ServerInstance . -Database master -Query $querytask} -ArgumentList ($Query)
 }
 
 # Give an update
