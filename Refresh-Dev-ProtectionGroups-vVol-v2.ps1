@@ -12,6 +12,8 @@
 #    SQLPROD-VG/VVOL-NAME for the Source VM and SQLTEST-VG/VVOLNAME for the Target VM                                        #
 #    Target VM vVol Device number for each of the Target VM vVol Disks (Windows Device Number)                               #
 #                                                                                                                            #
+#    Requries PowerCLI 10 or higher, the PureStoragePowerShellSDK (v1), PureStorage.FlashArray.VMware, & SQLPS modules.      #
+#                                                                                                                            #
 # Drives are taken offline by their device unit number rather than serial number in the Target VM                            #
 #                                                                                                                            #
 # Updates - 13 NOV 2020                                                                                                      #
