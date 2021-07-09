@@ -56,14 +56,18 @@ Import-Module SQLPS -PSSession $TargetServerSession -DisableNameChecking
 # Offline the database(s)
 Write-Warning "Offlining the target database(s)..."
 Foreach ($database in $databases) {
-    $Scriptblock = "Invoke-Sqlcmd -ServerInstance . -Database master -Query  'ALTER DATABASE $database SET OFFLINE WITH ROLLBACK IMMEDIATE'"
-    Invoke-Command -Session $TargetServerSession -ScriptBlock {$Scriptblock}
+    Write-Host "Offlining $database"
+    # Offline the database
+    Write-Warning "Offlining the target database..."
+    $Query = "ALTER DATABASE " + $($database) + " SET OFFLINE WITH ROLLBACK IMMEDIATE"
+    Invoke-Command -Session $TargetServerSession -ScriptBlock {Param($querytask) Invoke-Sqlcmd -ServerInstance . -Database master -Query $querytask} -ArgumentList ($Query)
 }
 
 # Offline the volumes that have SQL data
 Write-Warning "Offlining the target volume(s)..." 
 Foreach ($targetdevice in $targetdevices) {
-    Invoke-Command -Session $TargetServerSession -ScriptBlock { Get-Disk | ? { $_.Number -eq $targetdevice } | Set-Disk -IsOffline $True }
+    Write-Host "Offlining Disk $($targetdevice)"
+    Invoke-Command -Session $TargetServerSession -ScriptBlock {Param($currentdisk) Get-Disk | ? { $_.Number -eq $($currentdisk) } | Set-Disk -IsOffline $True } -ArgumentList ($targetdevice)
 }
 
 # Connect to the FlashArray's REST API, get a session going
@@ -92,14 +96,15 @@ Foreach ($targetvolume in $targetvolumes) {
 # Online the volume(s)
 Write-Warning "Onlining the target volumes..." 
 Foreach ($targetdevice in $targetdevices) {
-    Invoke-Command -Session $TargetServerSession -ScriptBlock { Get-Disk | ? { $_.Number -eq $targetdevice } | Set-Disk -IsOffline $True }
+    Write-Host "Onlining Disk $($targetdevice)"
+    Invoke-Command -Session $TargetServerSession -ScriptBlock {Param($currentdisk) Get-Disk | ? { $_.Number -eq $($currentdisk) } | Set-Disk -IsOffline $False } -ArgumentList ($targetdevice)
 }
 
 # Online the database
-Write-Warning "Onlining the target database..." 
 Foreach ($database in $databases) {
-    $Scriptblock = "Invoke-Sqlcmd -ServerInstance . -Database master -Query  'ALTER DATABASE $database SET ONLINE WITH ROLLBACK IMMEDIATE'"
-    Invoke-Command -Session $TargetServerSession -ScriptBlock {$Scriptblock}
+    Write-Host "Onlining $database"
+    $Query = "ALTER DATABASE " + $($database) + " SET ONLINE WITH ROLLBACK IMMEDIATE"
+    Invoke-Command -Session $TargetServerSession -ScriptBlock {Param($querytask) Invoke-Sqlcmd -ServerInstance . -Database master -Query $querytask} -ArgumentList ($Query)
 }
 
 # Give an update
