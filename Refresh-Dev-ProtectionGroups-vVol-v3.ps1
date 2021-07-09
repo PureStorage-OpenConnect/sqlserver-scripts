@@ -56,8 +56,8 @@ Import-Module SQLPS -PSSession $TargetServerSession -DisableNameChecking
 Write-Warning "Offlining the target database(s)..."
 Foreach ($database in $databases) {
     Write-Host "Offlining $database"
-# Offline the database
-Write-Warning "Offlining the target database..."
+    # Offline the database
+    Write-Warning "Offlining the target database..."
     $Query = "ALTER DATABASE " + $($database) + " SET OFFLINE WITH ROLLBACK IMMEDIATE"
     Invoke-Command -Session $TargetServerSession -ScriptBlock {Param($querytask) Invoke-Sqlcmd -ServerInstance . -Database master -Query $querytask} -ArgumentList ($Query)
 }
@@ -71,17 +71,11 @@ Foreach ($targetdevice in $targetdevices) {
 
 
 If ($DefaultFlashArray) {
-
     $FlashArray = $DefaultFlashArray 
-
 } else {
-
     # Connect to the FlashArray's REST API, get a session going
-    # THIS IS A SAMPLE SCRIPT WE USE FOR DEMOS! _PLEASE_ do not save your password in cleartext here. 
-    # Use NTFS secured, encrypted files or whatever else -- never cleartext!
     Write-Warning "Establishing a session against the Pure Storage FlashArray..." 
     $FlashArray = New-PfaArray -EndPoint $EndPoint -Credentials (Get-Credential) -IgnoreCertificateError
-
 }
 
 # Only initiate a new snapshot if the Protection Group is local (not remote)
@@ -104,7 +98,6 @@ If ($PGroupName -like "*:*") {
     }
 
 }
-
 
 # Perform the target volume(s) overwrite
 Write-Warning "Overwriting the target database volumes with a copies of the volumes in the most recent snapshot..." 
