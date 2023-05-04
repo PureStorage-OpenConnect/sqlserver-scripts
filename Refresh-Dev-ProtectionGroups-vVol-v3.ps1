@@ -43,9 +43,6 @@ $databases     = @('FT_Demo')
 # It should not be necessary to make any changes below    #
 ###########################################################
 
-# Configure the target SQL Server 
-$TargetServer = 'JSQLTEST'
-
 # Create a session to the target server
 $TargetServerSession = New-PSSession -ComputerName $TargetServer
 
