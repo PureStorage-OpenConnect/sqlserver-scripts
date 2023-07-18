@@ -1,46 +1,79 @@
-Clear-Host
-
-Import-Module PureStoragePowerShellSDK
+#Requires -Version 5
+#Requires -Modules PureStoragePowerShellSDK2
 
 $TargetMachine = 'CLUSTER-NODE1'
-$TargetSQLInstance = 'SQL-FCI-VNN'
+$ArrayName = 'array.dns.name'
+$ArrayUsername = 'pureuser'
+$ArrayPassword = 'password'
+$SourceVolumeName = 'source-volume-name'
+$TargetVolumeName = 'target-volume-name'
+$SqlInstance = 'CLUSTER-SQL'
+$DatabaseName = 'DatabaseName'
+$ClusterDiskName = 'Cluster Disk Name'
 
-$TargetMachSession = New-PSSession -ComputerName $TargetMachine
+$TargetSession = New-PSSession -ComputerName $TargetMachine
 
-Import-Module SQLPS -PSSession $TargetMachSession -DisableNameChecking
+try {
+    # Initialize session variables
+    Invoke-Command -Session $TargetSession -ScriptBlock {
+        param (
+            [string]$sql,
+            [string]$dbName,
+            [string]$dskNm
+        )
 
-Write-Host "Actual development instance downtime begins now." -ForegroundColor Red
+        $sqlInstance = $sql
+        $databaseName = $dbName
+        $clusterDiskName = $dskNm
+    } -ArgumentList $SqlInstance, $DatabaseName, $ClusterDiskName
 
-# Offline the database
-Write-Host "Offlining the database..." -ForegroundColor Red
-Invoke-Command -Session $TargetMachSession -ScriptBlock { Invoke-Sqlcmd -ServerInstance 'SQL-FCI-VNN' -Database master -Query "ALTER DATABASE DatabaseName SET OFFLINE WITH ROLLBACK IMMEDIATE" }
+    Write-Host 'Actual development instance downtime begins now.' -ForegroundColor Red
 
-# Remove SQL Server cluster resource dependency on database volume
-Invoke-Command -Session $TargetMachSession -ScriptBlock { Get-ClusterResource 'SQL Server' | Remove-ClusterResourceDependency 'Cluster Disk Name' }
+    Invoke-Command -Session $TargetSession -ScriptBlock {
+        # Offline the database
+        Write-Host 'Offlining the database...' -ForegroundColor Red
+        Invoke-Sqlcmd -ServerInstance $sqlInstance -Query "ALTER DATABASE [$databaseName] SET OFFLINE WITH ROLLBACK IMMEDIATE"
 
-# Stop the disk cluster resource
-Invoke-Command -Session $TargetMachSession -ScriptBlock { Stop-ClusterResource 'Cluster Disk Name' }
+        # Remove SQL Server cluster resource dependency on database volume
+        Write-Host 'Removing dependency on database volume...' -ForegroundColor Red
+        Get-ClusterResource 'SQL Server' | Remove-ClusterResourceDependency $clusterDiskName | Out-Null
 
-# Connect to the FlashArray's REST API, get a session going - CHANGE THIS TO SECURED/ENCRYPTED FILE!
-Write-Host "Establishing a session against the Pure Storage FlashArray..." -ForegroundColor Red
-$FlashArray = New-PfaArray –EndPoint array.dns.name -UserName pureuser -Password (ConvertTo-SecureString -AsPlainText "pureuser" -Force) -IgnoreCertificateError
+        # Stop the disk cluster resource
+        Write-Host 'Offlining the disk cluster resource...' -ForegroundColor Red
+        Stop-ClusterResource $clusterDiskName | Out-Null
+    }
 
-# Perform the volume overwrite (no intermediate snapshot needed!)
-Write-Host "Overwriting the dev instance's volume with a fresh copy from production..." -ForegroundColor Red
-New-PfaVolume -Array $FlashArray -VolumeName target-volume-name -Source source-volume-name -Overwrite
+    # Connect to the FlashArray's REST API, get a session going - CHANGE THIS TO SECURED/ENCRYPTED FILE!
+    Write-Host 'Establishing a session against the Pure Storage FlashArray...' -ForegroundColor Red
+    $FlashArray = Connect-Pfa2Array -Endpoint $ArrayName -Username $ArrayUsername -Password (ConvertTo-SecureString -AsPlainText $ArrayPassword -Force) -IgnoreCertificateError
+    try {
+        # Perform the volume overwrite (no intermediate snapshot needed!)
+        Write-Host "Overwriting the dev instance's volume with a fresh copy from production..." -ForegroundColor Red
+        New-Pfa2Volume -Array $FlashArray -Name $TargetVolumeName -SourceName $SourceVolumeName -Overwrite $true | Out-Null
+    }
+    finally {
+        Disconnect-Pfa2Array -Array $FlashArray
+    }
 
-# Start the disk cluster resource
-Invoke-Command -Session $TargetMachSession -ScriptBlock { Start-ClusterResource 'Cluster Disk Name' }
+    Invoke-Command -Session $TargetSession -ScriptBlock {
+        # Start the disk cluster resource
+        Write-Host 'Onlining the disk cluster resource...' -ForegroundColor Red
+        Start-ClusterResource $clusterDiskName | Out-Null
 
-# Add a dependency on the volume for the SQL Server cluster resource 
-Invoke-Command -Session $TargetMachSession -ScriptBlock { Get-ClusterResource 'SQL Server' | Add-ClusterResourceDependency 'Cluster Disk Name' }
+        # Add a dependency on the volume for the SQL Server cluster resource
+        Write-Host 'Adding dependency on database volume...' -ForegroundColor Red
+        Get-ClusterResource 'SQL Server' | Add-ClusterResourceDependency $clusterDiskName | Out-Null
 
-# Online the database
-Write-Host "Onlining the database..." -ForegroundColor Red
-Invoke-Command -Session $TargetMachSession -ScriptBlock { Invoke-Sqlcmd -ServerInstance 'SQL-FCI-VNN' -Database master -Query "ALTER DATABASE DatabaseName SET ONLINE WITH ROLLBACK IMMEDIATE" }
+        # Online the database
+        Write-Host 'Onlining the database...' -ForegroundColor Red
+        Invoke-Sqlcmd -ServerInstance $sqlInstance -Query "ALTER DATABASE [$databaseName] SET ONLINE WITH ROLLBACK IMMEDIATE"
+    }
 
-Write-Host "Development database downtime ended." -ForegroundColor Red
+    Write-Host 'Development database downtime ended.' -ForegroundColor Red
+}
+finally {
+    # Clean up
+    Remove-PSSession $TargetSession
+}
 
-# Clean up
-Remove-PSSession $TargetMachSession
-Write-Host "All done." -ForegroundColor Red
+Write-Host 'All done.' -ForegroundColor Red

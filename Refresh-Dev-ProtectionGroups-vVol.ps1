@@ -16,7 +16,7 @@
 ##########################################################################################################################
 
 # Ensure the Pure Storage PowerShell SDK is loaded
-Import-Module PureStoragePowerShellSDK
+Import-Module PureStoragePowerShellSDK2
 
 # Configure the target SQL Server 
 $TargetServer = 'MyTestServer'
@@ -24,53 +24,60 @@ $TargetServer = 'MyTestServer'
 # Create a session to the target server
 $TargetServerSession = New-PSSession -ComputerName $TargetServer
 
-# Import the SQLPS module so SQL commands are available
-Import-Module SQLPS -PSSession $TargetServerSession -DisableNameChecking
+try {
+    # Offline the database
+    Write-Host 'Offlining the target database...' 
+    Invoke-Command -Session $TargetServerSession -ScriptBlock {
+        Invoke-Sqlcmd -ServerInstance '.' -Query 'ALTER DATABASE MyDatabaseName SET OFFLINE WITH ROLLBACK IMMEDIATE'
+    }
 
-# Offline the database
-Write-Warning "Offlining the target database..." 
-Invoke-Command -Session $TargetServerSession -ScriptBlock { Invoke-Sqlcmd -ServerInstance . -Database master -Query "ALTER DATABASE MyDatabaseName SET OFFLINE WITH ROLLBACK IMMEDIATE" }
+    # Offline the volumes that have SQL data
+    Write-Host 'Offlining the target volumes...' 
+    Invoke-Command -Session $TargetServerSession -ScriptBlock { Get-Disk | ? Number -eq 1 | Set-Disk -IsOffline $True }
+    Invoke-Command -Session $TargetServerSession -ScriptBlock { Get-Disk | ? Number -eq 2 | Set-Disk -IsOffline $True }
+    Invoke-Command -Session $TargetServerSession -ScriptBlock { Get-Disk | ? Number -eq 3 | Set-Disk -IsOffline $True }
 
-# Offline the volumes that have SQL data
-Write-Warning "Offlining the target volumes..." 
-Invoke-Command -Session $TargetServerSession -ScriptBlock { Get-Disk | ? { $_.Number -eq '1' } | Set-Disk -IsOffline $True }
-Invoke-Command -Session $TargetServerSession -ScriptBlock { Get-Disk | ? { $_.Number -eq '2' } | Set-Disk -IsOffline $True }
-Invoke-Command -Session $TargetServerSession -ScriptBlock { Get-Disk | ? { $_.Number -eq '3' } | Set-Disk -IsOffline $True }
+    # Connect to the FlashArray's REST API, get a session going
+    # THIS IS A SAMPLE SCRIPT WE USE FOR DEMOS! _PLEASE_ do not save your password in cleartext here. 
+    # Use NTFS secured, encrypted files or whatever else -- never cleartext!
+    Write-Host 'Establishing a session against the Pure Storage FlashArray...' 
+    $FlashArray = Connect-Pfa2Array -Endpoint '10.10.1.22' -Username 'pureuser' -Password (ConvertTo-SecureString -AsPlainText 'PASSWORD' -Force) -IgnoreCertificateError
 
-# Connect to the FlashArray's REST API, get a session going
-# THIS IS A SAMPLE SCRIPT WE USE FOR DEMOS! _PLEASE_ do not save your password in cleartext here. 
-# Use NTFS secured, encrypted files or whatever else -- never cleartext!
-Write-Warning "Establishing a session against the Pure Storage FlashArray..." 
-$FlashArray = New-PfaArray -EndPoint 10.10.1.22 -UserName pureuser -Password (ConvertTo-SecureString -AsPlainText "PASSWORD" -Force) -IgnoreCertificateError
+    try {
+        # If you don't want a new snapshot of the Protection Group generated whenever you run this script, comment this next line
+        Write-Host 'Creating a new snapshot of the Protection Group...'
+        New-Pfa2ProtectionGroupSnapshot -Array $FlashArray -SourceNames 'MyDatabaseName-PG' -ApplyRetention $true
 
-# If you don't want a new snapshot of the Protection Group generated whenever you run this script, comment this next line
-Write-Warning "Creating a new snapshot of the Protection Group..."
-New-PfaProtectionGroupSnapshot -Array $FlashArray -Protectiongroupname 'MyDatabaseName-PG' -ApplyRetention
+        Write-Host 'Obtaining the most recent snapshot for the protection group...'
+        $MostRecentSnapshot = Get-Pfa2ProtectionGroupSnapshot -Array $FlashArray -SourceNames 'MyDatabaseName-PG' -Sort 'created-' -Limit 1
 
-Write-Warning "Obtaining the most recent snapshot for the protection group..."
-$MostRecentSnapshot = Get-PfaProtectionGroupSnapshots -Array $FlashArray -Name 'MyDatabaseName-PG' | Sort-Object created -Descending | Select -Property name -First 1
+        # Perform the target volume overwrite
+        # Differs from Refresh-Dev-ProtectionGroups.ps1 because vVols are part of a Volume Group
+        # This changes the syntax for the overwriting process
+        Write-Host 'Overwriting the target database volumes with a copies of the volumes in the most recent snapshot...' 
+        New-Pfa2Volume -Array $FlashArray -Name 'VOLUMEGROUP2/TARGETVM-vVol-Drive-E' -SourceName ($MostRecentSnapshot.name + '.VOLUMEGROUP1/SOURCEVM-vVol-Drive-E') -Overwrite $true
+        New-Pfa2Volume -Array $FlashArray -Name 'VOLUMEGROUP2/TARGETVM-vVol-Drive-F' -SourceName ($MostRecentSnapshot.name + '.VOLUMEGROUP1/SOURCEVM-vVol-Drive-F') -Overwrite $true
+        New-Pfa2Volume -Array $FlashArray -Name 'VOLUMEGROUP2/TARGETVM-vVol-Drive-G' -SourceName ($MostRecentSnapshot.name + '.VOLUMEGROUP1/SOURCEVM-vVol-Drive-G') -Overwrite $true
+    }
+    finally {
+        Disconnect-Pfa2Array -Array $FlashArray
+    }
 
-# Perform the target volume overwrite
-# Differs from Refresh-Dev-ProtectionGroups.ps1 because vVols are part of a Volume Group
-# This changes the syntax for the overwriting process
-Write-Warning "Overwriting the target database volumes with a copies of the volumes in the most recent snapshot..." 
-New-PfaVolume -Array $FlashArray -VolumeName VOLUMEGROUP2/TARGETVM-vVol-Drive-E -Source ($MostRecentSnapshot.name + '.VOLUMEGROUP1/SOURCEVM-vVol-Drive-E') -Overwrite
-New-PfaVolume -Array $FlashArray -VolumeName VOLUMEGROUP2/TARGETVM-vVol-Drive-F -Source ($MostRecentSnapshot.name + '.VOLUMEGROUP1/SOURCEVM-vVol-Drive-F') -Overwrite
-New-PfaVolume -Array $FlashArray -VolumeName VOLUMEGROUP2/TARGETVM-vVol-Drive-G -Source ($MostRecentSnapshot.name + '.VOLUMEGROUP1/SOURCEVM-vVol-Drive-G') -Overwrite
+    # Online the volume
+    Write-Host 'Onlining the target volumes...' 
+    Invoke-Command -Session $TargetServerSession -ScriptBlock { Get-Disk | ? Number -EQ 1 | Set-Disk -IsOffline $False }
+    Invoke-Command -Session $TargetServerSession -ScriptBlock { Get-Disk | ? Number -EQ 2 | Set-Disk -IsOffline $False }
+    Invoke-Command -Session $TargetServerSession -ScriptBlock { Get-Disk | ? Number -EQ 3 | Set-Disk -IsOffline $False }
 
-# Online the volume
-Write-Warning "Onlining the target volumes..." 
-Invoke-Command -Session $TargetServerSession -ScriptBlock { Get-Disk | ? { $_.Number -eq '1' } | Set-Disk -IsOffline $False }
-Invoke-Command -Session $TargetServerSession -ScriptBlock { Get-Disk | ? { $_.Number -eq '2' } | Set-Disk -IsOffline $False }
-Invoke-Command -Session $TargetServerSession -ScriptBlock { Get-Disk | ? { $_.Number -eq '3' } | Set-Disk -IsOffline $False }
+    # Online the database
+    Write-Host 'Onlining the target database...' 
+    Invoke-Command -Session $TargetServerSession -ScriptBlock { Invoke-Sqlcmd -ServerInstance '.' -Query 'ALTER DATABASE MyDatabaseName SET ONLINE WITH ROLLBACK IMMEDIATE' }
 
-# Online the database
-Write-Warning "Onlining the target database..." 
-Invoke-Command -Session $TargetServerSession -ScriptBlock { Invoke-Sqlcmd -ServerInstance . -Database master -Query "ALTER DATABASE MyDatabaseName SET ONLINE WITH ROLLBACK IMMEDIATE" }
-
-# Give an update
-Write-Warning "Target database downtime ended." 
-
-# Clean up
-Remove-PSSession $TargetServerSession
-Write-Warning "All done." 
+    # Give an update
+    Write-Host 'Target database downtime ended.' 
+}
+finally {
+    # Clean up
+    Remove-PSSession $TargetServerSession
+}
+Write-Host 'All done.' 
