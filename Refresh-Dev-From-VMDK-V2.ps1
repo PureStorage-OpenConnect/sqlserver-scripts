@@ -43,11 +43,14 @@
 
 # Configuring the script to use parameters so it can be reused more easily
 param (
+    [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$Endpoint,
     [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$SourceVmName,
     [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$TargetVmName,
     [Parameter(Mandatory=$true)][ValidateNotNullOrEmpty()][string]$DatabaseName,
     [Parameter(Mandatory=$false)][boolean]$NonDomainMember
 )
+
+. $PSScriptRoot\Pfa2REST.ps1
 
 If ($NonDomainMember -eq $True) {
     $AdCreds = Get-Credential -Message "AD credentials are required for PowerShell remoting"
@@ -59,22 +62,6 @@ If (-Not (Get-Module -ListAvailable -Name "VMware.PowerCLI")) {
     Write-Host "It can be installed using " -NoNewLine 
     Write-Host "'Install-Module -Name VMware.PowerCLI'" -ForegroundColor Green
     Write-Host
-    exit
-}
-# Check for Pure Storage PowerShell SDK (v1) installation, required to facilitate some FlashArray tasks
-If (-Not (Get-Module -ListAvailable -Name "PureStoragePowerShellSDK")) {
-    Write-Host "Please install the Pure Storage PowerShell SDK (v1) Module and rerun this script to proceed" -ForegroundColor Yellow
-    Write-Host "It can be installed using " -NoNewLine 
-    Write-Host "'Install-Module -Name PureStoragePowerShellSDK'" -ForegroundColor Green
-    Write-Host 
-    exit
-}
-# Check for Pure Storage FlashArray Module for VMware installation, required to facilitate some VMware-based FlashArray tasks
-If (-Not (Get-Module -ListAvailable -Name "PureStorage.FlashArray.VMware")) {
-    Write-Host "Please install the Pure Storage FlashArray Module for VMware and rerun this script to proceed" -ForegroundColor Yellow
-    Write-Host "It can be installed using " -NoNewLine 
-    Write-Host "'Install-Module -Name PureStorage.FlashArray.VMware'" -ForegroundColor Green
-    Write-Host 
     exit
 }
 
@@ -106,38 +93,11 @@ If ($Global:DefaultVIServer) {
     try {
         Connect-VIServer -Server $VIFQDN -Credential $VICredentials -ErrorAction Stop | Out-Null
         Write-Host "Connected to $VIFQDN" -ForegroundColor Green 
-        $ConnectVc = $True
     }
     catch {
         Write-Host "Failed to connect to $VIFQDN" -BackgroundColor Red
         Write-Host $Error
         Write-Host "Terminating the script " -BackgroundColor Red
-        $ConnectVc = $False
-        return
-    }
-}
-
-# Check to see if we're connected to FlashArray, if not, prompt for a FlashArray and the Credentials to connect to it.
-# It is expected that the FlashArray being logged into, is the FlashArray that houses the Source VM & Target VM's SQL data disks
-If ($DefaultFlashArray) {
-    Write-Host "Defaulting to FlashArray: $($DefaultFlashArray.Endpoint) "
-    $ConnectFA = $False
-} else {
-    #connect to FlashArray
-    $FaEndPoint = Read-Host "Please enter a FlashArray IP or FQDN"
-    try
-    {
-        $FaCredentials = Get-Credential -Message "Please enter the FlashArray Credentials for $($FaEndPoint)"
-        $FlashArray = New-PfaConnection -EndPoint $FaEndpoint -Credentials $FaCredentials -ErrorAction Stop -IgnoreCertificateError -DefaultArray
-        $ConnectFA = $True
-    }
-    catch
-    {
-        write-host "Failed to connect to FlashArray" -BackgroundColor Red
-        write-host $Error
-        write-host "Terminating Script" -BackgroundColor Red
-        $ConnectFA = $False
-
         return
     }
 }
@@ -157,10 +117,6 @@ If ($DefaultFlashArray) {
     # Store the datastore of the 1st Source disk returned - Assuming that all data disks are on the same datastore
     $SourceDatastore = Get-Datastore -Id ($SourceDisks[0]).ExtensionData.Backing.Datastore
 
-    # Determine if the VM's datastore is sourced by the FlashArray that has been connected to
-    try {$SourceVolume = get-pfaVolfromVMFS -Flasharray $DefaultFlashArray -Datastore $SourceDatastore -ErrorAction Stop} 
-    catch {Write-Host "The datastore was not found on the FlashArray connection. Exiting" -ForegroundColor Red;exit}
-
 # Target VM
     # See if the Target VM exists    
     try { $TargetVM = Get-VM -Name $TargetVmName -ErrorAction Stop}
@@ -174,10 +130,6 @@ If ($DefaultFlashArray) {
     
     # Store the datastore of the 1st Target disk returned - Assuming that all data disks are on the same datastore
     $TargetDatastore   = Get-Datastore -Id ($TargetDisks[0]).ExtensionData.Backing.Datastore
-
-    # Determine if the VM's datastore is sourced by the FlashArray that has been connected to
-    try {$TargetVolume = get-pfaVolfromVMFS -Flasharray $DefaultFlashArray -Datastore $TargetDatastore -ErrorAction Stop} 
-    catch {Write-Host "The datastore was not found on the FlashArray connection. Exiting" -ForegroundColor Red;exit}
 
     # Grab the datastore name and have it ready for when the disks are renamed
     $TargetPSDriveDS   = $TargetDatastore.Name
@@ -254,11 +206,47 @@ Get-Datastore $TargetDatastore | Remove-Datastore -VMHost $TargetVM.VMHost -Conf
 
 Write-Host
 Write-Host "Array tasks" -ForegroundColor Blue
-Write-Host "     Cloning the source volume"
 
-# Replacing the PureStoragePowerShellSDK cmdlet with Rest API Call for support on Win/Linux/Mac systems
-#New-PfaVolume -Array $DefaultFlashArray -VolumeName $TargetVolume.name -Source $SourceVolume.name -Overwrite
-New-PfaRestOperation -ResourceType volume/$($TargetVolume.name) -RestOperationType POST -Flasharray $DefaultFlashArray -SkipCertificateCheck -jsonBody "{`"source`":`"$($SourceVolume.name)`"}"?overwrite=true | Out-Null
+$sourceSerial = $SourceDatastore.ExtensionData.Info.Vmfs.Extent.DiskName | select -unique | % {$_.substring(12)}
+$targetSerial = $TargetDatastore.ExtensionData.Info.Vmfs.Extent.DiskName | select -unique | % {$_.substring(12)}
+
+Write-Host "Connecting to $endpoint FlashArray"
+if ($PSEdition -ne 'core') {
+    Set-Pfa2SkipCertificateCheck
+}
+try {
+    $session = Open-Pfa2Session -endpoint $endpoint -credential (Get-Credential -Message "Enter your credentials to connect to $endpoint FlashArray.") -skipCertificateCheck -version '2.11'
+}
+catch {
+    Write-Error "Failed to connect to $endpoint FlashArray. $($_.Exception.Message)"
+    return
+}
+
+try {
+    $res = Invoke-Pfa2Operation -session $session -method 'Get' -query "volumes?filter=serial='$sourceSerial'&limit=1"
+    if ($res.items) {
+        $sourceVolume = $res.items[0]
+    } else {
+        throw "Volume $sourceSerial not found."
+    }
+    $res = Invoke-Pfa2Operation -session $session -method 'Get' -query "volumes?filter=serial='$targetSerial'&limit=1"
+    if ($res.items) {
+        $targetVolume = $res.items[0]
+    } else {
+        throw "Volume $targetSerial not found."
+    }
+
+    Write-Host "Cloning the source volume"
+    $src = @{'source'=@{'name'=$sourceVolume.name}} | ConvertTo-Json
+    Invoke-Pfa2Operation -session $session -query "volumes?names=$($targetVolume.name)&overwrite=true" -rest @{'Body' = $src} | Out-Null
+}
+catch {
+    Write-Error "Failed to clone source volume. $($_.Exception.Message)"
+    return
+}
+finally {
+    Close-Pfa2Session -session $session
+}
 
 Start-Sleep 5
 
@@ -294,7 +282,7 @@ Foreach ($FaVolumeSnap in $FaVolumeSnaps) {
     # Resignature the cloned volume and mount it
     $EsxCli.storage.vmfs.snapshot.resignature.invoke(@{volumelabel=$($FaVolumeSnap.VolumeName)}) | Out-Null
     # Get the snapped datastore
-    $ClonedDS = (Get-Datastore | ? { $_.name -match 'snap' -and $_.name -match $SourceDatastore.Name })
+    $CloneDS = (Get-Datastore | ? { $_.name -match 'snap' -and $_.name -match $SourceDatastore.Name })
     Write-Host "     Waiting for the snapshot to be mounted"
     # Wait until the datastore has been mounted
     while ($CloneDS -eq $null) { # We may have to wait a little bit before the datastore is fully operational
@@ -302,8 +290,7 @@ Foreach ($FaVolumeSnap in $FaVolumeSnaps) {
         Start-Sleep -Seconds 5
     }
     # When the datastore has been mounted, rename it to the name of the volume
-    $CloneDSVolume = get-pfaVolfromVMFS -Flasharray $DefaultFlashArray -Datastore $CloneDS
-    Write-Host "     Renaming the Datastore $($CloneDS) to $($CloneDSVolume.name)"
+    Write-Host "     Renaming the Datastore $($CloneDS) to $($TargetDatastore)"
     Get-Datastore | Where-Object {$_.Name -Like "snap-*-$($SourceDatastore)"} | Set-Datastore -Name $TargetDatastore | Out-Null
     $TargetDatastore = Get-Datastore -Name $TargetPSDriveDS -ErrorAction SilentlyContinue
     # Perform a rescan on the host
