@@ -2,7 +2,7 @@
 # Use NTFS secured, encrypted files or whatever else -- never cleartext!
 
 Import-Module VMware.VimAutomation.Core
-Import-Module PureStoragePowerShellSDK2
+Import-Module PureStoragePowerShellSDK
 
 $SourceVM = 'MySourceVM'
 $TargetVM = 'MyTargetVM'
@@ -74,16 +74,12 @@ Invoke-Command -Session $SourceVMSession -ScriptBlock $ScriptBlock
 # Connect to the array, authenticate. Remember disclaimer at the top!
 Write-Host "Connecting to Pure FlashArray..." -ForegroundColor Red
 
-$FlashArray = Connect-Pfa2Array -EndPoint $ArrayName -UserName $ArrayUsername -Password (ConvertTo-SecureString -AsPlainText $ArrayPassword -Force) -IgnoreCertificateError
-try {
-    # Perform the volume overwrite (no intermediate snapshot needed!)
-    Write-Host "Performing datastore array volume clone..." -ForegroundColor Red
+$FlashArray = New-PfaArray –EndPoint $ArrayName -UserName $ArrayUsername -Password (ConvertTo-SecureString -AsPlainText $ArrayPassword -Force) -IgnoreCertificateError
 
-    New-Pfa2Volume -Array $FlashArray -Name $TargetVolumeName -SourceName $SourceVolumeName -Overwrite $true
-}
-finally {
-    Disconnect-Pfa2Array -Array $FlashArray
-}
+# Perform the volume overwrite (no intermediate snapshot needed!)
+Write-Host "Performing datastore array volume clone..." -ForegroundColor Red
+
+New-PfaVolume -Array $FlashArray -VolumeName $TargetVolumeName -Source $SourceVolumeName -Overwrite
 
 # Now let's tell the ESX host to rescan storage
 
