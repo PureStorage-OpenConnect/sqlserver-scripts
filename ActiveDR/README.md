@@ -1,16 +1,16 @@
 <p align="center"></p>
 
-ActiveDR + SQL Server Scripts
-This folder contains ActiveDR + SQL Server example scripts.
-<!-- wp:separator -->
-<hr class="wp-block-separator"/>
-<!-- /wp:separator -->
+# ActiveDR + SQL Server Scripts
+
+
+**This folder contains ActiveDR + SQL Server example scripts**
 
 **Files:**
 - ActiveDR Failover Test.ps1
 - ActiveDR Full Failover.ps1
 
 **Scenario:**
+
 Test failover only in DR.  Do not impact Production
 
 Single test database "CookbookDemo_ADR" on two RDM volumes: a data volume & log volume, on each SQL Server. 
@@ -22,10 +22,11 @@ Single test database "CookbookDemo_ADR" on two RDM volumes: a data volume & log 
 4. On DR server, SQL Server service off. Service auto-start should be set to Manual as well.
 
 **Usage Notes:**
-This script is meant to be run in chunks. Break/exit commands have been added where appropriate. 
 
-This example script is provided AS-IS and meant to be a building block to be adapted to fit an individual organization's 
-infrastructure.
+These scripts are meant to be run in chunks. Break/exit commands have been added where appropriate. 
+
+These examples are provided **AS-IS** and meant to be a building block examples to be adapted to fit an individual organization's infrastructure.
+
 <!-- wp:separator -->
 <hr class="wp-block-separator"/>
 <!-- /wp:separator -->
