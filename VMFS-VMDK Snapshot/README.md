@@ -1,14 +1,13 @@
+**VMFS/VMDK + SQL Server Snapshot Scripts**
 <p align="center"></p>
-
-VMFS/VMDK + SQL Server Snapshot Scripts
-<BR><BR>
 This folder contains VMFS/VMDK + SQL Server example snapshot scripts.
-<!-- wp:separator -->
-<hr class="wp-block-separator"/>
-<!-- /wp:separator -->
 
 **Files:**
 - VMFS_VMDK Snapshot Demo - SDK2.ps1
+
+<!-- wp:separator -->
+<hr class="wp-block-separator"/>
+<!-- /wp:separator -->
 
 **Scenario:**
 <BR>This example script shows steps to snapshot a VMFS datastore that contains data & log VMDKs for a SQL Server.  The overall scenario is taking a snapshot of a production SQL Server's underlying datastore, and cloning the datastore to then overlay a pre-existing non-production datastore for a non-production SQL Server.  
@@ -19,7 +18,7 @@ All references to a "target" refer to the non-production side (VM, datastore, et
 1. The production datastore must already be cloned and presented once, to the non-production side.  
 2. This script assumes the database(s) are already attached on the target, non-production SQL Server.  
 
-**Usage Notes:**
+**Important Usage Notes:**
 <BR>You must pre-setup the target VM with a cloned datastore from the source already.  You will ONLY be utilizing the specific VMDK(s) that contain the data/log files of interest, from the cloned datastore.  Also note that the VMFS datastore does not need to only exclusively contain VMDKs for the SQL Server in question. If other VMDKs are present in the datastore, used by the either the source SQL Server VM or other VMs, they do not need to be deleted or otherwise manipulated during this cloning process.  Remember FlashArray deduplicates data, thus a clone's set of additional, unused VMDKs will not have a negative impact.  
 
 For the cloned datastore pre-setup, you can use subsets of the code below to clone the source datastore, present it to the target server, then attach the VMDK(s) containing the production databases that will be re-cloned with this script. Once "staged," you can then use this script fully to refresh the data files in the cloned datastore that is attached to the target server.
@@ -31,6 +30,7 @@ This script also assumes that all database files (data and log) are on the same 
 <!-- wp:separator -->
 <hr class="wp-block-separator"/>
 <!-- /wp:separator -->
+
 **Disclaimer:**
 <BR>
 This example script is provided AS-IS and meant to be a building block to be adapted to fit an individual organization's infrastructure.
