@@ -43,11 +43,11 @@ $Databases = @('AutoDealershipDemo_VMFS','CookbookDemo_VMFS')
 $TargetDiskSerialNumbers = @('6000c29d8fbd57d2c64b173eb9a6f3bd')                # Target Disk Serial Number(s)
 $VIServerName = 'vc01.fsa.lab'
 $ClusterName = 'Workload Cluster 1'                # VMware Cluster
-$SourceDatastoreName = 'ayun_sql_ds1'                # VMware datastore name
+$SourceDatastoreName = 'vmware_sql_datastore'                # VMware datastore name
 $SourceVMDKPath = 'ayun-sql19-03_1/ayun-sql19-03.vmdk'                # VMDK path inside the VMFS datastore
 $ArrayName = 'sn1-c60-e12-16.puretec.purestorage.com'
-$SourceVolumeName = 'ayun_sql_ds1'                # Volume name on FlashArray (may be same as your datastore name)
-$TargetVolumeName = 'ayun_sql_ds2'                # Volume name on FlashArray (may be same as your datastore name)
+$SourceVolumeName = 'ayun_sql_ds_volume_1'                # Volume name on FlashArray (may be same as your datastore name)
+$TargetVolumeName = 'ayun_sql_ds_volume_2'                # Volume name on FlashArray (may be same as your datastore name)
 
 $Credential = Get-Credential -UserName "$env:USERNAME" -Message 'Enter your credential information...'
 
