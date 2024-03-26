@@ -3,7 +3,7 @@
 This folder contains VMFS/VMDK + SQL Server example snapshot scripts.
 
 **Files:**
-- VMFS_VMDK Snapshot Demo - SDK2.ps1
+- VMFS-VMDK Snapshot.ps1
 
 <!-- wp:separator -->
 <hr class="wp-block-separator"/>

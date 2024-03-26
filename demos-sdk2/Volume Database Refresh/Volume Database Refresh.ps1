@@ -1,49 +1,83 @@
-# Refresh a dev database in a few seconds!
+##############################################################################################################################
+# Volume Database Refresh
+#
+# Scenario: 
+#   Script will refresh a database on the target server from a source database on a separate server
+#
+# Prerequisities:
+#   sqlserver and PureStoragePowerShellSDK modules installed on client machine
+#   Two SQL instances with a database that has its data and log files on one volume on both servers
+#   Example here assumes vVols but RDMs will work as well
+#
+# Usage Notes:
+#   Each section of the script is meant to be run one after the other. The script is not meant to be executed all at once.
+# 
+# Disclaimer:
+# This example script is provided AS-IS and meant to be a building block to be adapted to fit an individual 
+# organization's infrastructure.
+# 
+# THIS IS A SAMPLE SCRIPT WE USE FOR DEMOS! _PLEASE_ do not save your passwords in cleartext here. 
+# Use NTFS secured, encrypted files or whatever else -- never cleartext!
+#
+##############################################################################################################################
+
+
+
+# Import powershell modules
 Import-Module SqlServer
 Import-Module PureStoragePowerShellSDK2
 
 
 
-#Let's initalize some variables we'll use for connections to our SQL Server and it's base OS
-$Target = 'aen-sql-22-b'
+# Declare variables
+$Target                  = 'SqlServer1'                                     # Name of target VM
+$ArrayName               = 'flasharray1.example.com'                        # FlashArray FQDN
+$DatabaseName            = 'AdventureWorks'                                 # Database to be refreshed
+$TargetDiskSerialNumber  = '6000c02022cb876dcd321example01b'                # Target Disk Serial Number
+$SourceVolumeName        = 'vvol-SERVERNAME-a-1-3d9acfdd-vg/Data-example'   # Source volume name on FlashArray
+$TargetVolumeName        = 'vvol-SERVERNAME-a-1-3d9acfdd-vg/Data-example'   # Target volume name on FlashArray
+
+
+
+# Create a Powershell session against the target VM
 $TargetSession = New-PSSession -ComputerName $Target
-$Credential = Import-CliXml -Path "$HOME\FA_Cred.xml"
+
+
+
+# Set credential to connect to FlashArray
+$Credential = Get-Credential
+
 
 
 # Offline the database
-Write-Output "Actual development instance downtime begins now." -ForegroundColor Red
-Write-Output "Offlining the database..." -ForegcroundColor Red
-Invoke-Sqlcmd -ServerInstance $Target -Database master -Query "ALTER DATABASE FT_Demo SET OFFLINE WITH ROLLBACK IMMEDIATE" 
+Invoke-Sqlcmd -ServerInstance $Target -Database master -Query "ALTER DATABASE [$DatabaseName] SET OFFLINE WITH ROLLBACK IMMEDIATE" 
+
 
 
 # Offline the volume
-Write-Output "Offlining the volume..." -ForegroundColor Red
-Invoke-Command -Session $TargetSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq '6000c2967c745d1964f4706e41bc85ac' } | Set-Disk -IsOffline $True }
+Invoke-Command -Session $TargetSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:TargetDiskSerialNumber } | Set-Disk -IsOffline $True }
+
 
 
 # Connect to the FlashArray's REST API
-Write-Output "Establishing a session against the Pure Storage FlashArray..." -ForegroundColor Red
-$FlashArray = Connect-Pfa2Array –EndPoint sn1-m70-f06-33.puretec.purestorage.com -Credential $Credential -IgnoreCertificateError
+$FlashArray = Connect-Pfa2Array –EndPoint $ArrayName -Credential $Credential -IgnoreCertificateError
+
 
 
 # Perform the volume overwrite (no intermediate snapshot needed!)
-Write-Output "Overwriting the dev instance's volume with a fresh copy from production..." -ForegroundColor Red
-New-Pfa2Volume -Array $FlashArray -Name 'vvol-aen-sql-22-b-9b9a3477-vg/Data-f08e715f' -SourceName 'vvol-aen-sql-22-a-1-3d9acfdd-vg/Data-cabce242' -Overwrite $true 
+New-Pfa2Volume -Array $FlashArray -Name $TargetVolumeName -SourceName $SourceVolumeName  -Overwrite $true 
+
 
 
 # Online the volume
-Write-Output "Onlining the volume..." -ForegroundColor Red
-Invoke-Command -Session $TargetSession -ScriptBlock { Get-Disk | ? { $_.SerialNumber -eq '6000c2967c745d1964f4706e41bc85ac' } | Set-Disk -IsOffline $False }
+Invoke-Command -Session $TargetSession -ScriptBlock { Get-Disk | ? { $_.SerialNumber -eq $using:TargetDiskSerialNumber } | Set-Disk -IsOffline $False }
+
 
 
 # Online the database
-Write-Output "Onlining the database..." -ForegroundColor Red
-Invoke-Sqlcmd -ServerInstance $Target -Database master -Query "ALTER DATABASE FT_Demo SET ONLINE WITH ROLLBACK IMMEDIATE" 
+Invoke-Sqlcmd -ServerInstance $Target -Database master -Query "ALTER DATABASE [$DatabaseName] SET ONLINE WITH ROLLBACK IMMEDIATE" 
 
-
-Write-Output "Development database downtime ended." -ForegroundColor Red
 
 
 # Clean up
 Remove-PSSession $TargetSession
-Write-Output "All done." -ForegroundColor Red

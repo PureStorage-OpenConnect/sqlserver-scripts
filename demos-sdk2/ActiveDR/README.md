@@ -13,7 +13,7 @@
 
 Test failover only in DR.  Do not impact Production
 
-Single test database "CookbookDemo_ADR" on two RDM volumes: a data volume & log volume, on each SQL Server. 
+Single test database "ExampleDb" on two RDM volumes: a data volume & log volume, on each SQL Server. 
 
 **Prerequisites:**
 1. DR Pod needs to be pre-created
@@ -23,7 +23,7 @@ Single test database "CookbookDemo_ADR" on two RDM volumes: a data volume & log 
 
 **Usage Notes:**
 
-These scripts are meant to be run in chunks. Break/exit commands have been added where appropriate. 
+These scripts are meant to be run in chunks; note the Part X headers.  Each Part represents an independent workflow in the greater context of a DR manual failover and manual failback.  DO NOT run everything at once!
 
 These examples are provided **AS-IS** and meant to be a building block examples to be adapted to fit an individual organization's infrastructure.
 

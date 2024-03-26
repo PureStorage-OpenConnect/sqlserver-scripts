@@ -1,1 +1,0 @@
-# SSMS Extension Database Refresh

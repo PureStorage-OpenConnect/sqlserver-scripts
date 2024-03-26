@@ -1,61 +1,127 @@
-# Refresh databases on a second array from a replicate protection group snapshot
+##############################################################################################################################
+# Protection Group Database Refresh Between FlashArrays
+#
+# Scenario: 
+#    This script will refresh a database on the target server, that is backed by a different FlashArray.  The source 
+#    for the snapshot will be a replicated Protection Group snapshot from the original/source FlashArray.
+#
+# Prerequisities:
+#    1. Two SQL Server instances with a single database, whose data file(s) are contained within 1 volume and log file(s)
+#       are contained within a 2nd volume.  
+#    2. A Protection Group defined with the two volumes (data and log) as members.
+#    3. This script assumes Protection Group snapshots & replication are pre-scheduled and already occurring. 
+# 
+# Usage Notes:
+#    This simple example assumes there is only one database residing on two different volumes (data & log).  If multiple 
+#    databases are present, additional code must be added to offline/online all databases present on the affected volumes 
+#    in the Protection Group.  Also note that the Protection Group use may include other volumes without negative impact.  
+#    Any extraneous volumes will simply not be utilized during the cloning step.  Finally, remember that snapshot replication
+#    between FlashArrays is asynchronous.  Thus it is possible at runtime, that the most recent snapshot is still in the
+#    middle of being replicated.  There is a step to validate the state of the snapshot, before the cloning step.
+# 
+# Disclaimer:
+#    This example script is provided AS-IS and meant to be a building block to be adapted to fit an individual 
+#    organization's infrastructure.
+##############################################################################################################################
+
+
+
+# Import powershell modules
 Import-Module SqlServer
 Import-Module PureStoragePowerShellSDK2
 
-$Target = 'aen-sql-22-dr'
-$TargetSession = New-PSSession -ComputerName $Target
-$Credential = Import-CliXml -Path "$HOME\FA_Cred.xml"
 
 
-# Offline the databases
-Write-Warning "Offlining the target database..." 
-Invoke-Sqlcmd -ServerInstance $Target -Database master -Query "ALTER DATABASE FT_Demo SET OFFLINE WITH ROLLBACK IMMEDIATE" 
-Invoke-Sqlcmd -ServerInstance $Target -Database master -Query "ALTER DATABASE tpcc100 SET OFFLINE WITH ROLLBACK IMMEDIATE" 
-Invoke-Sqlcmd -ServerInstance $Target -Database master -Query "ALTER DATABASE tpch100 SET OFFLINE WITH ROLLBACK IMMEDIATE" 
+# Declare variables
+$TargetSQLServer          = 'SqlServer2'                           # Name of target SQL Server
+$SourceArrayName          = 'flasharray1.example.com'              # Source FlashArray containing source Protection Group
+$TargetArrayName          = 'flasharray2.example.com'              # Target FlashArray of Snapshot Replication
+$DatabaseName             = 'ExampleDb'                            # Name of the database being snapshotted & cloned
+$ProtectionGroupName      = 'SqlServer1_Pg'                        # Protection Group name in the FlashArray
+$TargetDiskSerialNumber1  = '6000c02022cb876dcd321example01a'      # Target Disk Serial Number - ex: Data volume
+$TargetDiskSerialNumber2  = '6000c02022cb876dcd321example02b'      # Target Disk Serial Number - ex: Log volume
+$SourceVolumeName1        = 'SourceSqlVolume1'                     # Source volume name 1 on FlashArray - ex: Data volume
+$SourceVolumeName2        = 'SourceSqlVolume2'                     # Source volume name 2 on FlashArray - ex: Log volume
+$TargetVolumeName1        = 'TargetSqlVolume1'                     # Target volume name 1 on FlashArray - ex: Data volume
+$TargetVolumeName2        = 'TargetSqlVolume2'                     # Target volume name 2 on FlashArray - ex: Log volume
 
 
-# Offline the volumes
-Write-Warning "Offlining the target volumes..." 
-Invoke-Command -Session $TargetSession -ScriptBlock { Get-Disk | ? { $_.SerialNumber -eq '6000c29958cf0246e699034809badd49' } | Set-Disk -IsOffline $true }
-Invoke-Command -Session $TargetSession -ScriptBlock { Get-Disk | ? { $_.SerialNumber -eq '6000c295acdd84ef3ef0d2ca8f4a407f' } | Set-Disk -IsOffline $true }
-Invoke-Command -Session $TargetSession -ScriptBlock { Get-Disk | ? { $_.SerialNumber -eq '6000c29653be9c3badb2b5a7cd62ccb4' } | Set-Disk -IsOffline $true }
+
+# Set Credentials - this assumes the same credential for the target SQL Server and the FlashArray
+$Credential = Get-Credential
 
 
-# Connect to the FlashArray's REST API, get a session going
-# THIS IS A SAMPLE SCRIPT WE USE FOR DEMOS! _PLEASE_ do not save your password in cleartext here. 
-# Use NTFS secured, encrypted files or whatever else -- never cleartext!
-Write-Output "Establishing a session against the Pure Storage FlashArray..." -ForegroundColor Red
-$FlashArray = Connect-Pfa2Array –EndPoint sn1-x70-f06-27.puretec.purestorage.com -Credential $Credential -IgnoreCertificateError
+
+# Connect to the source FlashArray's REST API
+$SourceFlashArray = Connect-Pfa2Array –EndPoint $TargetArrayName -Credential $Credential -IgnoreCertificateError
 
 
-#Get the most recent snapshot that is replicated to this array
-Write-Warning "Obtaining the most recent snapshot for the protection group..."
-$Snapshot = Get-Pfa2ProtectionGroupSnapshot -Array $FlashArray -SourceName 'sn1-m70-f06-33:aen-sql-22-a-pg' | Sort-Object created -Descending | Select-Object -Property name -First 1
-$Snapshot
+
+# Take a snapshot of the Protection Group and replicate it to the target array
+$Snapshot = New-Pfa2ProtectionGroupSnapshot -Array $FlashArray -SourceName $ProtectionGroupName -ForReplication $true -ReplicateNow $true
+
+
+
+# Create a Powershell session against the target SQL Server
+$TargetSession = New-PSSession -ComputerName $TargetSQLServer -Credential $Credential
+
+
+
+# Offline the target database
+$Query = "ALTER DATABASE [$DatabaseName] SET OFFLINE WITH ROLLBACK IMMEDIATE"
+Invoke-Sqlcmd -ServerInstance $TargetSQLServer -Database master -Query $Query
+
+
+
+# Offline the target volumes
+Invoke-Command -Session $TargetSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:TargetDiskSerialNumber1 } | Set-Disk -IsOffline $True }
+Invoke-Command -Session $TargetSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:TargetDiskSerialNumber2 } | Set-Disk -IsOffline $True }
+
+
+
+# Connect to the target FlashArray's REST API
+$TargetFlashArray = Connect-Pfa2Array –EndPoint $TargetArrayName -Credential $Credential -IgnoreCertificateError
+
+
+
+# Get the most recent snapshot that is replicated to this array
+$Snapshot = Get-Pfa2ProtectionGroupSnapshot -Array $TargetFlashArray -SourceName $TargetArrayName + ':' + $ProtectionGroupName | Sort-Object created -Descending | Select-Object -Property name -First 1
+
+
+
+# Confirm that the snapshot has been fully replicated
+# If the snapshot's completed property is null, then it has not been fully replicated
+Get-Pfa2ProtectionGroupSnapshotTransfer -Array $TargetFlashArray -Name $Snapshot.name
+
+
+
+### Diagnostic 
+# Validate that the correct volume(s) will be used from the protection group snapshot. 
+# Note the final naming scheme of a replicated protection group volume snapshot is
+# [source array]:[protection group name].[volume name]
+# $Snapshot
+# $Snapshot.Name + "." + $SourceVolumeName1
+# $Snapshot.Name + "." + $SourceVolumeName2
+
 
 
 # Perform the target volume overwrite
-Write-Warning "Overwriting the target database volumes with a copies of the volumes in the most recent snapshot..." 
-New-Pfa2Volume -Array $FlashArray -Name 'vvol-aen-sql-22-dr-b6405dd7-vg/Data-7fc763b5' -SourceName ($Snapshot.Name + ".vvol-aen-sql-22-a-1-3d9acfdd-vg/Data-87ee3d7c") -Overwrite $true
-New-Pfa2Volume -Array $FlashArray -Name 'vvol-aen-sql-22-dr-b6405dd7-vg/Data-f3a857f4' -SourceName ($Snapshot.Name + ".vvol-aen-sql-22-a-1-3d9acfdd-vg/Data-77084035") -Overwrite $true
-New-Pfa2Volume -Array $FlashArray -Name 'vvol-aen-sql-22-dr-b6405dd7-vg/Data-7170aa52' -SourceName ($Snapshot.Name + ".vvol-aen-sql-22-a-1-3d9acfdd-vg/Data-cabce242") -Overwrite $true
+New-Pfa2Volume -Array $TargetFlashArray -Name $TargetVolumeName1 -SourceName ($Snapshot.Name + "." + $SourceVolumeName1) -Overwrite $true 
+New-Pfa2Volume -Array $TargetFlashArray -Name $TargetVolumeName2 -SourceName ($Snapshot.Name + "." + $SourceVolumeName2) -Overwrite $true 
 
 
-# Online the volume
-Write-Warning "Onlining the target volumes..." 
-Invoke-Command -Session $TargetSession -ScriptBlock { Get-Disk | ? { $_.SerialNumber -eq '6000c29958cf0246e699034809badd49' } | Set-Disk -IsOffline $false }
-Invoke-Command -Session $TargetSession -ScriptBlock { Get-Disk | ? { $_.SerialNumber -eq '6000c295acdd84ef3ef0d2ca8f4a407f' } | Set-Disk -IsOffline $false }
-Invoke-Command -Session $TargetSession -ScriptBlock { Get-Disk | ? { $_.SerialNumber -eq '6000c29653be9c3badb2b5a7cd62ccb4' } | Set-Disk -IsOffline $false }
+
+# Online the newly cloned volumes
+Invoke-Command -Session $TargetSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:TargetDiskSerialNumber1 } | Set-Disk -IsOffline $False }
+Invoke-Command -Session $TargetSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:TargetDiskSerialNumber2 } | Set-Disk -IsOffline $False }
 
 
-# Online the databases
-Write-Warning "Onlining the target database..." 
-Invoke-Sqlcmd -ServerInstance $Target -Database master -Query "ALTER DATABASE tpcc100 SET ONLINE WITH ROLLBACK IMMEDIATE" 
-Invoke-Sqlcmd -ServerInstance $Target -Database master -Query "ALTER DATABASE tpch100 SET ONLINE WITH ROLLBACK IMMEDIATE" 
-Invoke-Sqlcmd -ServerInstance $Target -Database master -Query "ALTER DATABASE FT_Demo SET ONLINE WITH ROLLBACK IMMEDIATE" 
 
-Write-Warning "Target database downtime ended." 
+# Online the database
+$Query = "ALTER DATABASE [$DatabaseName] SET ONLINE WITH ROLLBACK IMMEDIATE"
+Invoke-Sqlcmd -ServerInstance $TargetSQLServer -Database master -Query $Query
+
+
 
 # Clean up
-Remove-PSSession $TargetServerSession
-Write-Warning "All done." 
+Remove-PSSession $TargetSession

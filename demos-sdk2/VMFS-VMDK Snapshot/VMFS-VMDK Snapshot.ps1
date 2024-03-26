@@ -1,37 +1,30 @@
 ##############################################################################################################################
 # Refresh VMFS VMDK with Snapshot Demo
 #
-# Author: Andy Yun
-# Written: 2023-07-14
-# Updated: 2024-01-03
 #
 # Scenario: 
-# Snapshot and clone a "production" VMDK in a VMFS datastore, then present it to a "non-production" server.
+#    Snapshot and clone a "production" VMDK in a VMFS datastore, then present it to a "non-production" server.
 # 
-# This example has two databases: ExampleDb1, ExampleDb2, whose data and log files both reside on a single disk/VMDK.
+#    This example has two databases: ExampleDb1, ExampleDb2, whose data and log files both reside on a single disk/VMDK.
 #
 #
-# IMPORTANT Usage Notes:
+# Usage Notes:
 #
-# You must pre-setup the target VM with a cloned datastore from the source already.  You will ONLY be utilizing 
-# the SPECIFIC VMDK(s) that contain the data/log files of interest, from the cloned datastore.  Other VMDKs can safely be 
-# ignored since they are deduped on FlashArray.
+#    You must pre-setup the target VM with a cloned datastore from the source already.  You will ONLY be utilizing 
+#    the SPECIFIC VMDK(s) that contain the data/log files of interest, from the cloned datastore.  Other VMDKs can safely be 
+#    ignored since they are deduped on FlashArray.
 #
-# For the cloned datastore pre-setup, you can use subsets of the code below to clone the source datastore, present it to 
-# the target server, then attach the VMDK(s) containing the production databases that will be re-cloned with this script.
-# Once "staged," you can then use this script fully to refresh the data files in the cloned datastore that is attached 
-# to the target server.
+#    For the cloned datastore pre-setup, you can use subsets of the code below to clone the source datastore, present it to 
+#    the target server, then attach the VMDK(s) containing the production databases that will be re-cloned with this script.
+#    Once "staged," you can then use this script fully to refresh the data files in the cloned datastore that is attached 
+#    to the target server.
 #
-# This script also assumes that all database files (data and log) are on the same volume/single VMDK.  If multiple
-# volumes/VMDKs are being used, adjust the code to add additional foreach loops when manipulating the VMDKs.
+#    This script also assumes that all database files (data and log) are on the same volume/single VMDK.  If multiple
+#    volumes/VMDKs are being used, adjust the code to add additional foreach loops when manipulating the VMDKs.
 # 
 # Disclaimer:
-# This example script is provided AS-IS and meant to be a building block to be adapted to fit an individual 
-# organization's infrastructure.
-# 
-# THIS IS A SAMPLE SCRIPT WE USE FOR DEMOS! _PLEASE_ do not save your passwords in cleartext here. 
-# Use NTFS secured, encrypted files or whatever else -- never cleartext!
-#
+#    This example script is provided AS-IS and meant to be a building block to be adapted to fit an individual 
+#    organization's infrastructure.
 ##############################################################################################################################
 
 
@@ -73,7 +66,7 @@ $VIServer = Connect-VIServer -Server $VIServerName -Protocol https -Credential $
 
 
 # Offline the target database(s) by looping through $Databases array
-Foreach ($Database in $Databases) {
+foreach ($Database in $Databases) {
     $Query = "ALTER DATABASE [$Database] SET OFFLINE WITH ROLLBACK IMMEDIATE"
     Invoke-Sqlcmd -ServerInstance $TargetVM -Database master -Query $Query
 }
@@ -118,7 +111,7 @@ New-Pfa2Volume -Array $FlashArray -Name $TargetVolumeName -SourceName $SourceVol
 
 
 # Rescan storage on each ESX host in the $Hosts array
-Foreach ($VmHost in $Hosts) {
+foreach ($VmHost in $Hosts) {
     Get-VMHostStorage -RescanAllHba -RescanVmfs -VMHost $VmHost | Out-Null
 }
 
@@ -142,7 +135,7 @@ $DataStore = (Get-Datastore | Where-Object { $_.Name -match 'snap' -and $_.Name 
 
 
 # Rescan storage again to make sure all hosts can see the new datastore
-Foreach ($VmHost in $Hosts) {
+foreach ($VmHost in $Hosts) {
     Get-VMHostStorage -RescanAllHba -RescanVmfs -VMHost $VmHost | Out-Null
 }
 
@@ -164,7 +157,7 @@ Invoke-Command -Session $TargetVMSession -ScriptBlock { Get-Disk | Where-Object 
 
 
 # Online the target database(s) by looping through $Databases array
-Foreach ($Database in $Databases) {
+foreach ($Database in $Databases) {
     $Query = "ALTER DATABASE [$Database] SET ONLINE WITH ROLLBACK IMMEDIATE"
     Invoke-Sqlcmd -ServerInstance $TargetVM -Database master -Query $Query
 }

@@ -1,34 +1,24 @@
-#############################################################################
+##############################################################################################################################
 # ActiveDR - Non-Disruptive DR Test for SQL Server
 # 
-# Author: Andy Yun
-# Written: 2023-05-10
-# Updated: 2023-11-28
-#
 # Scenario: 
-# Test failover only in DR.  Do not impact Production
+#    Test failover only in DR.  Does not impact Production.  
 # 
-# Single test database "ActiveDR_Example_DB" on two RDM volumes: 
-# data & log, on each SQL Server. 
+#    Single test database "ExampleDb" on two RDM volumes: data & log, on each SQL Server. 
 #
 # Prerequisites:
-# 1. DR Pod needs to be pre-created
-# 2. Databases in DR Pod need to be "initialized" by being presented
-#    and attached to the DR SQL Server, then set offline
-# 3. After Step 2 initialization, be sure to retrieve applicable
-#    DR disk serial numbers & substitute in code
-# 4. On DR server, SQL Server service off. Service auto-start should
-#    be set to Manual as well.
+#    1. DR Pod needs to be pre-created
+#    2. Databases in DR Pod need to be "initialized" by being presented and attached to the DR SQL Server, then set offline
+#    3. After Step 2 initialization, be sure to retrieve applicable DR disk serial numbers & substitute in code
+#    4. On DR server, SQL Server service off. Service auto-start should be set to Manual as well.
 #
 # Usage Notes:
-# This script is meant to be run in chunks. Break/exit commands have
-# been added where appropriate. 
+#    This script is meant to be run in chunks.  Note the Part X headers.  DO NOT run everything at once!
 #
-# This example script is provided AS-IS and meant to be a building
-# block to be adapted to fit an individual organization's 
-# infrastructure.
-#
-#############################################################################
+# Disclaimer:
+#    This example script is provided AS-IS and meant to be a building block to be adapted to fit an individual 
+#    organization's infrastructure.
+##############################################################################################################################
 
 
 
@@ -47,13 +37,13 @@ Import-Module SqlServer
 # Set Variables
 $ArrayName          = "flasharray1.example.com"  # DR FlashArray
 $PodName            = "ActiveDrPod"              # Pod name on the DR FlashArray
-$TargetSQLServer    = "SqlServer1"               # DR SQL Server
-$DbName             = "ExampleDb"                # Name of database
+$DRSQLServer        = "SqlServer1"               # DR SQL Server
+$DatabaseName       = "ExampleDb"                # Name of database
 
 
 
 # Connect to DR SQL Server
-$TargetSQLServerSession = New-PSSession -ComputerName $TargetSQLServer
+$DRSQLServerSession = New-PSSession -ComputerName $DRSQLServer
 
 
 
@@ -77,7 +67,7 @@ Get-Pfa2Pod -Array $FlashArray -Name $PodName
 # Because disk serial number can change between reboots, need to programmatically reference
 # serial number to properly identify which disks to manipulate.
 # Use Get-Disk to determine disk serial numbers
-Invoke-Command -Session $TargetSQLServerSession -ScriptBlock { Get-Disk | Format-Table }
+Invoke-Command -Session $DRSQLServerSession -ScriptBlock { Get-Disk | Format-Table }
 
 
 
@@ -88,31 +78,31 @@ $Disk2 = "6000c02022cb876dcd321example02b"  # Serial Number of log disk
 
 
 # Online the windows disks 
-Invoke-Command -Session $TargetSQLServerSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:Disk1 } | Set-Disk -IsOffline $False }
-Invoke-Command -Session $TargetSQLServerSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:Disk2 } | Set-Disk -IsOffline $False }
+Invoke-Command -Session $DRSQLServerSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:Disk1 } | Set-Disk -IsOffline $False }
+Invoke-Command -Session $DRSQLServerSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:Disk2 } | Set-Disk -IsOffline $False }
 
 
 
 # Setting volumes to Read/Write
-Invoke-Command -Session $TargetSQLServerSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:Disk1 } | Set-Disk -IsReadOnly $False }
-Invoke-Command -Session $TargetSQLServerSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:Disk2 } | Set-Disk -IsReadOnly $False }
+Invoke-Command -Session $DRSQLServerSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:Disk1 } | Set-Disk -IsReadOnly $False }
+Invoke-Command -Session $DRSQLServerSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:Disk2 } | Set-Disk -IsReadOnly $False }
 
 
 
 # Confirm disks are online
-Invoke-Command -Session $TargetSQLServerSession -ScriptBlock { Get-Disk | Format-Table }
+Invoke-Command -Session $DRSQLServerSession -ScriptBlock { Get-Disk | Format-Table }
 
 
 
 # Online the database
-$Query = "ALTER DATABASE [$DbName] SET ONLINE WITH ROLLBACK IMMEDIATE"
-Invoke-Sqlcmd -ServerInstance $TargetSQLServer -Database master -Query $Query
+$Query = "ALTER DATABASE [$DatabaseName] SET ONLINE WITH ROLLBACK IMMEDIATE"
+Invoke-Sqlcmd -ServerInstance $DRSQLServer -Database master -Query $Query
 
 
 
 # Confirm database online
-$Query = "SELECT [name], [state_desc] FROM sys.databases WHERE [name] = '$DbName'"
-Invoke-Sqlcmd -ServerInstance $TargetSQLServer -Database master -Query $Query
+$Query = "SELECT [name], [state_desc] FROM sys.databases WHERE [name] = '$DatabaseName'"
+Invoke-Sqlcmd -ServerInstance $DRSQLServer -Database master -Query $Query
 
 
 
@@ -123,25 +113,25 @@ Invoke-Sqlcmd -ServerInstance $TargetSQLServer -Database master -Query $Query
 
 
 # Offline the database
-$Query = "ALTER DATABASE [$DbName] SET OFFLINE WITH ROLLBACK IMMEDIATE"
-Invoke-Sqlcmd -ServerInstance $TargetSQLServer -Database master -Query $Query
+$Query = "ALTER DATABASE [$DatabaseName] SET OFFLINE WITH ROLLBACK IMMEDIATE"
+Invoke-Sqlcmd -ServerInstance $DRSQLServer -Database master -Query $Query
 
 
 
 # Confirm database offline
-$Query = "SELECT [name], [state_desc] FROM sys.databases WHERE [name] = '$DbName'"
-Invoke-Sqlcmd -ServerInstance $TargetSQLServer -Database master -Query $Query
+$Query = "SELECT [name], [state_desc] FROM sys.databases WHERE [name] = '$DatabaseName'"
+Invoke-Sqlcmd -ServerInstance $DRSQLServer -Database master -Query $Query
 
 
 
 # Offline the volume
-Invoke-Command -Session $TargetSQLServerSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:Disk1 } | Set-Disk -IsOffline $True }
-Invoke-Command -Session $TargetSQLServerSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:Disk2 } | Set-Disk -IsOffline $True }
+Invoke-Command -Session $DRSQLServerSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:Disk1 } | Set-Disk -IsOffline $True }
+Invoke-Command -Session $DRSQLServerSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:Disk2 } | Set-Disk -IsOffline $True }
 
 
 
 # Confirm disks are offline
-Invoke-Command -Session $TargetSQLServerSession -ScriptBlock { Get-Disk | Format-Table }
+Invoke-Command -Session $DRSQLServerSession -ScriptBlock { Get-Disk | Format-Table }
 
 
 
