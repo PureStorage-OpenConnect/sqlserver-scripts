@@ -52,6 +52,7 @@ Array-based snapshots are used to decouple database operations from the size of 
 | ----------- | ----------- | ----------- | ----------- |
 | **Database Test Failover** | Perform a test failover of a database between two FlashArrays using ActiveDR | [More Info](./demos-sdk2/ActiveDR/) | [Sample Code](./demos-sdk2/ActiveDR/ActiveDR%20Failover%20Test.ps1) | 
 | **Database Full Failover** | Perform a test failover and failback of a database between two FlashArrays using ActiveDR | [More Info](./demos-sdk2/ActiveDR/) | [Sample Code](./demos-sdk2/ActiveDR/ActiveDR%20Full%20Failover.ps1) | 
+| **SQL Server FCI + ActiveDR** | Perform a test failover and failback of a SQL Server Failover Cluster Instance between two FlashArrays using ActiveDR | [More Info](./demos-sdk2/ActiveDR/SQL%Server%FCI%+%ActiveDR) | [Sample Code](./demos-sdk2/ActiveDR/SQL%Server%FCI%+%ActiveDR/ActiveDR-FCI-Testing.ps1) | 
 
 
 **Examples from the previous PowerShell SDK repository are available in this repository's [demos-archive](./demos-archive/) folder.**
