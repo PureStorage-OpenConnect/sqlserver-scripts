@@ -58,7 +58,7 @@ $Snapshot = Invoke-PsbSnapshotJob -FlashArrayAddress $ArrayName -FlashArrayCrede
 
 
 # Find the existing mounted snapshot so it can be dismounted
-$FindMount = Get-PsbSnapshotSetMountHistory -FlashArrayAddress $ArrayName -FlashArrayCredential $FlashArrayCredential | where {($_.Computer -contains $TargetSQLServer -and $_.HistoryId -match $VolumeSet)}
+$FindMount = Get-PsbSnapshotSetMountHistory -FlashArrayAddress $ArrayName -FlashArrayCredential $FlashArrayCredential | Where-Object {($_.Computer -contains $TargetSQLServer -and $_.HistoryId -match $VolumeSet)}
 
 
 

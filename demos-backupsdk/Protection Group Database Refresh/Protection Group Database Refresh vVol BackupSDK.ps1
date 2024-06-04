@@ -55,22 +55,22 @@ Invoke-Sqlcmd -ServerInstance $TargetSQLServer -Database master -Query $Query
 
 
 # Create a new snapshot of the Protection Group
-$Snapshot = Invoke-PsbSnapshotJob -vcenteraddress $vcenteraddress -VcenterCredential $vcentercredential -vmname $sourceVMName -FlashArrayAddress $ArrayName -FlashArrayCredential $FlashArrayCredential -VolumeSetName $VolumeSet -VolumeType $VolumeType -ComputerAddress $SourceSQLServer -ComputerCredential $SQLServerCredential -Path $SourcePath -pgroupname $ProtectionGroupName -ReplicateNow
+$Snapshot = Invoke-PsbSnapshotJob -vcenteraddress $vcenteraddress -VcenterCredential $vcentercredential -vmname $sourceVMName -FlashArrayAddress $SourceArrayName -FlashArrayCredential $FlashArrayCredential -VolumeSetName $VolumeSet -VolumeType $VolumeType -ComputerAddress $SourceSQLServer -ComputerCredential $SQLServerCredential -Path $SourcePath -pgroupname $ProtectionGroupName -ReplicateNow
 
 
 
 # Find the existing mounted snapshot so it can be dismounted
-$FindMount = Get-PsbSnapshotSetMountHistory -FlashArrayAddress $ArrayName -FlashArrayCredential $FlashArrayCredential | where {($_.Computer -contains $TargetSQLServer -and $_.HistoryId -match $VolumeSet)}
+$FindMount = Get-PsbSnapshotSetMountHistory -FlashArrayAddress $TargetArrayName -FlashArrayCredential $FlashArrayCredential | Where-Object {($_.Computer -contains $TargetSQLServer -and $_.HistoryId -match $VolumeSet)}
 
 
 
 # Dismount the snapshot
-Dismount-PsbSnapshotSet -flasharrayaddress $ArrayName -flasharraycredential $FlashArrayCredential -mountid $FindMount[0].mountid -computeraddress $TargetSQLServer -computercredential $SQLServerCredential
+Dismount-PsbSnapshotSet -flasharrayaddress $TargetArrayName -flasharraycredential $FlashArrayCredential -mountid $FindMount[0].mountid -computeraddress $TargetSQLServer -computercredential $SQLServerCredential -vcenteraddress $vcenteraddress -vcentercredential $vcentercredential
 
 
 
 # Mount the newer snapshot
-Mount-PsbSnapshotSet -HistoryId $Snapshot.HistoryId -FlashArrayAddress $ArrayName -flasharraycredential $FlashArrayCredential -computeraddress $TargetSQLServer -computercredential $SQLServerCredential -Path $TargetPath -VMName $targetvmname -VCenterAddress $vCenterAddress -VCenterCredential $vCenterCredential
+Mount-PsbSnapshotSet -HistoryId $Snapshot.HistoryId -FlashArrayAddress $TargetArrayName -flasharraycredential $FlashArrayCredential -computeraddress $TargetSQLServer -computercredential $SQLServerCredential -Path $TargetPath -VMName $targetvmname -VCenterAddress $vCenterAddress -VCenterCredential $vCenterCredential
 
 
 
