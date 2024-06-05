@@ -8,8 +8,12 @@
 
 **Scenario:**
 
-Testing failover of a SQL Server Failover Clustered Instance with nodes hosted on two separate FlashArrays.
+Testing failover of a 4 node SQL Server Failover Clustered Instance with nodes hosted on two separate FlashArrays.
+Failover between nodes on the same cluster will provide high availabiliy and failover between nodes on separate arrays provides disaster recovery.
  
+This demo script runs through two scenarios: -
+1. Failover of the failover cluster instance between nodes on the same array (no ActiveDR involvement)
+2. Failover of the cluster instance between nodes on separate arrays (requiring ActiveDR involvement)
 
 **Prerequisites:**
 1. Windows Cluster needs to be created, with four nodes...two on different FlashArrays

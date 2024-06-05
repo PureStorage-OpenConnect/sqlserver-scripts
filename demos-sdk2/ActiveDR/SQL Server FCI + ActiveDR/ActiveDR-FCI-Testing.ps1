@@ -3,9 +3,11 @@
 ##
 ## ActiveDR failover testing for SQL Server Failover Cluster Instance
 ## 
-## Script actions: -
-### Perform failover of clustered SQL Server role to node on same array
-### Then perform failover of clustered SQL Server role to node on remote array: -
+## This demo script runs through two scenarios: -
+## 1. Failover of clustered SQL Server role to node on same array
+## 2. Failover of clustered SQL Server role to node on remote array
+##
+## The second test involves the following steps: -
 ###### Stop clustered SQL Server role in FCI
 ###### Demote source pod
 ###### Promote target pod
