@@ -38,10 +38,10 @@ $ProtectionGroupName      = 'SqlServer1_Pg'                        # Protection 
 $VolumeSet                = 'volset1'                              # Name of the Volume Set
 $SourcePath               = 's:\,t:\'                              # Path of Volumes to Snapshot
 $TargetPath               = 'n:\,m:\'                              # Path of Volumes to Mount
-$VolumeType               = 'physical'                             # Physical, vVol, or pRDM
+$VolumeType               = 'physical'                             # Physical, vVol, or RDM
 
 
-# Set Credentials - this assumes the same credential for the target SQL Server and the FlashArray. If this is a VMware VM using pRDM or vVol, a vCenter credential is required.
+# Set Credentials - this assumes the same credential for the target SQL Server and the FlashArray. If this is a VMware VM using RDM or vVol, a vCenter credential is required.
 $FlashArrayCredential = Get-Credential
 $SQLServerCredential = Get-Credential
 
