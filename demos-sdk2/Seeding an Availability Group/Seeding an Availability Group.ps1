@@ -67,7 +67,7 @@ $FlashArrayPrimary = Connect-Pfa2Array –EndPoint $PrimaryArrayName -Credential
 
 
 
-# Freeze the database 
+# Freeze the database for write IOs
 $Query = "ALTER DATABASE [$DbName] SET SUSPEND_FOR_SNAPSHOT_BACKUP = ON"
 Invoke-DbaQuery -SqlInstance $SqlInstancePrimary -Query $Query -Verbose
 
