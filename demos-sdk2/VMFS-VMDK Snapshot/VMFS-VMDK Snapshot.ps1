@@ -1,57 +1,91 @@
 ##############################################################################################################################
-# Refresh VMFS VMDK with Snapshot Demo
+# Refresh VMFS VMDK(s) with Snapshot Demo
 #
-#
-# Scenario: 
-#    Snapshot and clone a "production" VMDK in a VMFS datastore, then present it to a "non-production" server.
+# Example Scenario:
+#    Production SQL Server & database(s) reside on a VMFS datastore.  Non-production SQL Server resides on 
+#    a different VMFS datastore.  User database(s) data and log files reside on two different VMDK disks 
+#    in each datastore.
 # 
-#    This example has two databases: ExampleDb1, ExampleDb2, whose data and log files both reside on a single disk/VMDK.
+#    Each datastore also resides on a different FlashArray, to demonstrate use of async snapshot replication.
 #
-#
-# Usage Notes:
-#
-#    You must pre-setup the target VM with a cloned datastore from the source already.  You will ONLY be utilizing 
-#    the SPECIFIC VMDK(s) that contain the data/log files of interest, from the cloned datastore.  Other VMDKs can safely be 
-#    ignored since they are deduped on FlashArray.
-#
-#    For the cloned datastore pre-setup, you can use subsets of the code below to clone the source datastore, present it to 
-#    the target server, then attach the VMDK(s) containing the production databases that will be re-cloned with this script.
-#    Once "staged," you can then use this script fully to refresh the data files in the cloned datastore that is attached 
-#    to the target server.
-#
-#    This script also assumes that all database files (data and log) are on the same volume/single VMDK.  If multiple
-#    volumes/VMDKs are being used, adjust the code to add additional foreach loops when manipulating the VMDKs.
+#    This example is for a repeatable refresh scenario, such as a nightly refresh of a production database on
+#    another non-production SQL Server.
 # 
+#    This example's workflow takes an on-demand snapshot of the Production datastore and async replicates it to
+#    the second FlashArray.  Then the snapshot is cloned as a new temporary volume/datastore.  The VMDKs with the
+#    production database files, residing on the temporary cloned datastore are attached to the target SQL Server,
+#    replacing the prior VMDKs that stored the database files previously.  Finally Storage vMotion is used to
+#    migrate the VMDKs to the non-production datastore, then the temporary cloned datastore is discarded.
+# 
+#    This workflow is intended to only be impact select Windows Disks/VMDKs that contain user databases.  
+#
 # Disclaimer:
 #    This example script is provided AS-IS and meant to be a building block to be adapted to fit an individual 
 #    organization's infrastructure.
+#
+#    _PLEASE_ do not save your passwords in cleartext here. 
+#    Use NTFS secured, encrypted files or whatever else -- never cleartext!
+#
 ##############################################################################################################################
 
 
 
 # Import powershell modules
-Import-Module PureStoragePowerShellSDK2
 Import-Module VMware.VimAutomation.Core
-Import-Module SqlServer
+Import-Module PureStoragePowerShellSDK2
 
 
 
-# Declare variables
-$TargetVM                = 'SqlServer1'                           # Name of target VM
-$Databases               = @('ExampleDb1','ExampleDb2')           # Array of database names
-$TargetDiskSerialNumber  = '6000c02022cb876dcd321example01b'      # Target Disk Serial Number
-$VIServerName            = 'vcenter.example.com'                  # vCenter FQDN
-$ClusterName             = 'WorkloadCluster1'                     # VMware Cluster
-$SourceDatastoreName     = 'vmware_sql_datastore'                 # VMware datastore name
-$SourceVMDKPath          = 'SqlServer1_1/SqlServer1.vmdk'         # VMDK path inside the VMFS datastore
-$ArrayName               = 'flasharray1.example.com'              # FlashArray FQDN
-$SourceVolumeName        = 'sql_volume_1'                         # Source volume name on FlashArray (may be same as your datastore name)
-$TargetVolumeName        = 'sql_volume_2'                         # Target volume name on FlashArray (may be same as your datastore name)
+# Declare all variables
+# VMware variables
+$VIServerName           = 'vcenter.example.com'
+$ClusterName            = 'WorkloadCluster1'
+$SourceDatastoreName    = 'source_sql_datastore'
+$TargetDatastoreName    = 'target_sql_datastore'
+$SourceVMDKPaths        = @('source_vm/sqldata.vmdk','source_vm/sqllog.vmdk')
+$TargetVMDKPaths        = @('target_vm/sqldata.vmdk','target_vm/sqllog.vmdk')
+
+# FlashArray variables
+$SourceArrayName        = 'flasharray1.example.com'    # FlashArray FQDN
+$SourceArrayShortName   = 'flasharray1'
+$TargetArrayName        = 'flasharray2.example.com'    # FlashArray FQDN
+$FAHostGroupName        = 'FAHostGroupName'            # HostGroup Name on FlashArray for the ESXi cluster
+$SourceVolumeName       = 'volume_name'
+$SourceProtectionGroup  = 'protection_group'
+$TargetVolumeName       = 'target_volume_name'
+$TargetProtectionGroup  = "$($SourceArrayShortName):$($SourceProtectionGroup)"    # [source array name (not FQDN)]:[source protection group name]
+
+# Windows/SQL Server variables
+$SourceVM               = 'source_vm'	               # Not FQDN
+$TargetVM               = 'target_vm'	               # Not FQDN
+$Databases              = @('AdventureWorks','WideWorldImporters')
+$TargetDevices          = @('1234c29689bc0888d32dcd2919a67z89', '1234c299721c4ba4a937552fb298a76')    # The serial numbers of the Windows volume containing database files; use get-disk 
 
 
 
-# Set Credential - this assumes the same credential for the target VM and vCenter
-$Credential = Get-Credential
+# Get Credentials - this demo example assumes the same credential for the target VM and vCenter
+$Credential = Get-Credential -UserName "$env:USERNAME" -Message 'Enter your credential information...'
+
+
+
+# Connect to the source array
+$FlashArray = Connect-Pfa2Array -Endpoint $SourceArrayName -Credential ($Credential) -IgnoreCertificateError
+
+
+
+# Create an on-demand Protection Group snapshot
+# NOTE: 
+#   This example uses async replication to generate a snapshot on $SourceArrayName and
+#   replicate it to $TargetArrayName.  Remove -Replication flag if snapshots are only
+#   being used on local array.
+#   Alternatively, you may substitute other code to select an existing snapshot here
+$MostRecentSnapshot = New-Pfa2ProtectionGroupSnapshot -Array $FlashArray -SourceNames $SourceProtectionGroup -ApplyRetention $true -ReplicateNow $true
+$MostRecentSnapshot
+
+
+
+###
+# Prepare for snapshot overlay
 
 
 
@@ -60,60 +94,66 @@ $TargetVMSession = New-PSSession -ComputerName $TargetVM -Credential $Credential
 
 
 
+# Import the SQLPS module so SQL commands are available
+Import-Module SQLPS -PSSession $TargetVMSession -DisableNameChecking
+
+
+
 # Connect to vCenter
 $VIServer = Connect-VIServer -Server $VIServerName -Protocol https -Credential $Credential 
+$TargetSQLServerVM = Get-VM -Server $VIServer -Name $TargetVM
+$VMESXiHost = Get-VMhost -VM $TargetSQLServerVM
 
 
 
-# Offline the target database(s) by looping through $Databases array
-foreach ($Database in $Databases) {
-    $Query = "ALTER DATABASE [$Database] SET OFFLINE WITH ROLLBACK IMMEDIATE"
-    Invoke-Sqlcmd -ServerInstance $TargetVM -Database master -Query $Query
+
+# Get discrete hosts connected to the ESXi cluster
+$Hosts = Get-Cluster $ClusterName | Get-VMHost | where-object { ($_.ConnectionState -eq 'Connected') }
+
+
+
+# Connect to the target array, authenticate. Remember disclaimer at the top!
+$FlashArray = Connect-Pfa2Array -Endpoint $TargetArrayName -Credential ($Credential) -IgnoreCertificateError
+
+
+
+# Get the most recent snapshot
+# NOTE:
+#   This next segment may be simplified if async snapshot replication is not being used.
+#   Alternatively, substitute code to take a new protection group snapshot or use 
+#   one created prior.
+$MostRecentSnapshots = Get-Pfa2ProtectionGroupSnapshot -Array $FlashArray -Name $TargetProtectionGroup | Sort-Object created -Descending | Select-Object -Property name -First 5
+
+
+
+# Check that the last snapshot has been fully replicated
+$FirstSnapStatus = Get-Pfa2ProtectionGroupSnapshotTransfer -Array $FlashArray -Name $MostRecentSnapshots[0].name
+
+if ($FirstSnapStatus.completed -ne $null) {     # If $FirstSnapStatus.completed, then it hasn't been fully replicated 
+    $MostRecentSnapshot = $MostRecentSnapshots[0].name
+}
+else {
+    # Use prior snapshot instead
+    $MostRecentSnapshot = $MostRecentSnapshots[1].name
 }
 
 
 
-# Offline the volumes that have SQL data
-Invoke-Command -Session $TargetVMSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:TargetDiskSerialNumber } | Set-Disk -IsOffline $True }
+# Create a new volume from the selected snapshot of the source
+$SnapshotSuffix = (Get-Date).ToString("yyyyMMdd-HHmmss")
+$NewClonedVolumeName = "$($SourceVolumeName)-repl-clone-$($SnapshotSuffix)"
+$ReplicatedSourceVolumeName = "$($MostRecentSnapshot).$($SourceVolumeName)"
+New-Pfa2Volume -Array $FlashArray -Name $NewClonedVolumeName -SourceName $ReplicatedSourceVolumeName -Overwrite $true 
 
 
 
-# Prepare to remove the VMDK from the VM
-$VM = Get-VM -Server $VIServer -Name $TargetVM
-$HardDisk = Get-HardDisk -VM $VM | Where-Object { $_.FileName -match $SourceVMDKPath } 
+# Present the new volume to the ESXi host group.
+New-Pfa2Connection -Array $FlashArray -HostGroupName $FAHostGroupName -VolumeName $NewClonedVolumeName
 
 
 
-# Remove the VMDK from the VM
-Remove-HardDisk -HardDisk $HardDisk -Confirm:$false
-
-
-
-# Prepare to remove the stale datastore
-$DataStore = $HardDisk.Filename.Substring(1, ($HardDisk.Filename.LastIndexOf(']') - 1))
-$Hosts = Get-Cluster $ClusterName | Get-VMHost | Where-Object { ($_.ConnectionState -eq 'Connected') }
-
-
-
-# Guest hard disk removed, now remove the stale datastore - this can take a min or two
-Get-Datastore $DataStore | Remove-Datastore -VMHost $Hosts[0] -Confirm:$False
-
-
-
-# Connect to the array, authenticate. Remember disclaimer at the top!
-$FlashArray = Connect-Pfa2Array -Endpoint $ArrayName -Credential ($Credential) -IgnoreCertificateError
-
-
-
-# Perform the volume overwrite (no intermediate snapshot needed!)
-New-Pfa2Volume -Array $FlashArray -Name $TargetVolumeName -SourceName $SourceVolumeName -Overwrite $True
-
-
-
-# Rescan storage on each ESX host in the $Hosts array
-foreach ($VmHost in $Hosts) {
-    Get-VMHostStorage -RescanAllHba -RescanVmfs -VMHost $VmHost | Out-Null
-}
+# ESXi host(s) must now rescan storage
+Get-VMHostStorage -RescanAllHba -RescanVmfs -VMHost $VMESXiHost
 
 
 
@@ -122,47 +162,125 @@ $esxcli = Get-EsxCli -VMHost $Hosts[0]
 
 
 
+### Diagnostic
+# Retrieve a list of the snapshots that have been presented to the host (our cloned volume should be present)
+# $snapInfo = $esxcli.storage.vmfs.snapshot.list()
+# $snapInfo | where-object { ($_.VolumeName -match $SourceDatastoreName) }
+# $snapInfo
+
+
+
 # Resignature the cloned datastore
-$EsxCli.Storage.Vmfs.Snapshot.Resignature($SourceDatastoreName)
+$esxcli.storage.vmfs.snapshot.resignature($SourceDatastoreName)
 
 
 
-# Find the assigned datastore name, this may take a few seconds
-# NOTE: when a datastore comes back, it's name will be "snap-[GUID chars]-[original DS name]"
-# This is why the wildcard match below is needed.
-$DataStore = (Get-Datastore | Where-Object { $_.Name -match 'snap' -and $_.Name -match $SourceDatastoreName })
+# Find the newly resignatured datastore name
+# NOTE:
+#    After a datastore is resignatured, its name will be "snap-[GUID chars]-[original DS name]"
+#    This is why the wildcard match below is needed.
+$clonedDatastore = (Get-Datastore | ? { $_.name -match 'snap' -and $_.name -match $SourceDatastoreName })
+
+while ($clonedDatastore -eq $null) {
+    # We may have to wait a little bit before the datastore is fully operational
+    Start-Sleep -Seconds 5
+    $clonedDatastore = (Get-Datastore | Where-Object { $_.name -match 'snap' -and $_.name -match $SourceDatastoreName })
+}
+# $clonedDatastore
 
 
 
-# Rescan storage again to make sure all hosts can see the new datastore
-foreach ($VmHost in $Hosts) {
-    Get-VMHostStorage -RescanAllHba -RescanVmfs -VMHost $VmHost | Out-Null
+# Must rescan storage again so ESXi hosts(s) can see the new cloned datastore
+Get-VMHostStorage -RescanAllHba -RescanVmfs -VMHost $VMESXiHost
+
+
+
+###
+# Prep SQL & Windows for VMDK overlay
+
+# Offline the target database(s) in SQL Server by looping through $Databases array
+Foreach ($database in $Databases) {
+    # Offline the database
+    $Query = "ALTER DATABASE " + $($database) + " SET OFFLINE WITH ROLLBACK IMMEDIATE"
+    Invoke-Command -Session $TargetVMSession -ScriptBlock {Param($querytask) Invoke-Sqlcmd -ServerInstance . -Database master -Query $querytask} -ArgumentList ($Query)
+}
+
+
+
+# Offline the volumes that have SQL data in Windows by looping through $TargetDevices array
+Foreach ($targetdevice in $TargetDevices) {
+    Invoke-Command -Session $TargetVMSession -ScriptBlock {Param($currentdisk) Get-Disk | ? { $_.SerialNumber -eq $($currentdisk) } | Set-Disk -IsOffline $True } -ArgumentList ($targetdevice)
+}
+
+
+
+# Remove the VMDK(s) with stale database files from the VM
+Foreach ($TargetVMDKPath in $TargetVMDKPaths) {
+    $harddisk = Get-HardDisk -VM $TargetSQLServerVM | ? { $_.FileName -match $TargetVMDKPath } 
+    Remove-HardDisk -HardDisk $harddisk -Confirm:$false -DeletePermanently
 }
 
 
 
 # Attach the VMDK from the newly cloned datastore back to the target VM
-New-HardDisk -VM $VM -DiskPath "[$DataStore] $SourceVMDKPath"
-
-
-
-# Online the volume on the target VM
-Invoke-Command -Session $TargetVMSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:TargetDiskSerialNumber } | Set-Disk -IsOffline $False }
-
-
-
-# Volume might be read-only, ensure it's read/write
-Invoke-Command -Session $TargetVMSession -ScriptBlock { Get-Disk | Where-Object { $_.SerialNumber -eq $using:TargetDiskSerialNumber } | Set-Disk -IsReadOnly $False }
-
-
-
-# Online the target database(s) by looping through $Databases array
-foreach ($Database in $Databases) {
-    $Query = "ALTER DATABASE [$Database] SET ONLINE WITH ROLLBACK IMMEDIATE"
-    Invoke-Sqlcmd -ServerInstance $TargetVM -Database master -Query $Query
+Foreach ($SourceVMDKPath in $SourceVMDKPaths) {
+    $newlyAttachedDisk = New-HardDisk -VM $TargetSQLServerVM -DiskPath "[$($clonedDatastore.Name)] $SourceVMDKPath"
 }
 
 
 
-# Remove powershell session
+# Online the volume(s) on the target VM by looping through $TargetDevices array
+Foreach ($targetdevice in $TargetDevices) {
+    Invoke-Command -Session $TargetVMSession -ScriptBlock {Param($currentdisk) Get-Disk | Where-Object { $_.SerialNumber -eq $($currentdisk) } | Set-Disk -IsOffline $False } -ArgumentList ($targetdevice)
+}
+
+
+
+# Volume might be read-only, ensure it's read/write
+Foreach ($targetdevice in $TargetDevices) {
+    Invoke-Command -Session $TargetVMSession -ScriptBlock {Param($currentdisk) Get-Disk | Where-Object { $_.SerialNumber -eq $($currentdisk) } | Set-Disk -IsReadOnly $False } -ArgumentList ($targetdevice)
+}
+
+
+
+# Online the target database(s) by looping through $Databases array
+Foreach ($database in $databases) {
+    $Query = "ALTER DATABASE " + $($database) + " SET ONLINE WITH ROLLBACK IMMEDIATE"
+    Invoke-Command -Session $TargetVMSession -ScriptBlock {Param($querytask) Invoke-Sqlcmd -ServerInstance . -Database master -Query $querytask} -ArgumentList ($Query)
+}
+
+
+
+###
+# Databases should now be online and usable
+# Start cleanup next
+
+
+
+# Perform Storage vMotion to move the new VMDK disk(s) to the original source datastore.
+$destinationDatastore = Get-Datastore -Name $TargetDatastoreName
+
+Foreach ($SourceVMDKPath in $SourceVMDKPaths) {
+    $newlyAttachedDisk = Get-HardDisk -VM $TargetSQLServerVM | ? { $_.FileName -match $SourceVMDKPath } 
+    Move-HardDisk -HardDisk $newlyAttachedDisk -Datastore $destinationDatastore -Confirm:$false
+}
+
+
+
+# Guest hard disk removed, now remove the stale datastore - this can take a min or two
+Remove-Datastore -Datastore $clonedDatastore -VMHost $Hosts[0] -Confirm:$false
+
+
+
+# On FlashArray, disconnect the cloned volume from the ESXi cluster
+Remove-Pfa2Connection -Array $FlashArray -HostGroupName $FAHostGroupName -VolumeName $NewClonedVolumeName
+
+
+
+# On FlashArray, destroy the cloned volume
+Remove-Pfa2Volume -Array $FlashArray -Name $NewClonedVolumeName
+
+
+
+# Clean up
 Remove-PSSession $TargetVMSession
