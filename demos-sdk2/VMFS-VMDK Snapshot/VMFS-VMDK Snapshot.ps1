@@ -106,12 +106,6 @@ $VMESXiHost = Get-VMhost -VM $TargetSQLServerVM
 
 
 
-
-# Get discrete hosts connected to the ESXi cluster
-$Hosts = Get-Cluster $ClusterName | Get-VMHost | where-object { ($_.ConnectionState -eq 'Connected') }
-
-
-
 # Connect to the target array, authenticate. Remember disclaimer at the top!
 $FlashArray = Connect-Pfa2Array -Endpoint $TargetArrayName -Credential ($Credential) -IgnoreCertificateError
 
@@ -158,7 +152,7 @@ Get-VMHostStorage -RescanAllHba -RescanVmfs -VMHost $VMESXiHost
 
 
 # Connect to EsxCli
-$esxcli = Get-EsxCli -VMHost $Hosts[0]
+$esxcli = Get-EsxCli -VMHost $VMESXiHost
 
 
 
@@ -186,7 +180,7 @@ while ($clonedDatastore -eq $null) {
     Start-Sleep -Seconds 5
     $clonedDatastore = (Get-Datastore | Where-Object { $_.name -match 'snap' -and $_.name -match $SourceDatastoreName })
 }
-# $clonedDatastore
+$clonedDatastore
 
 
 
@@ -268,7 +262,7 @@ Foreach ($SourceVMDKPath in $SourceVMDKPaths) {
 
 
 # Guest hard disk removed, now remove the stale datastore - this can take a min or two
-Remove-Datastore -Datastore $clonedDatastore -VMHost $Hosts[0] -Confirm:$false
+Remove-Datastore -Datastore $clonedDatastore -VMHost $VMESXiHost -Confirm:$false
 
 
 
@@ -284,3 +278,4 @@ Remove-Pfa2Volume -Array $FlashArray -Name $NewClonedVolumeName
 
 # Clean up
 Remove-PSSession $TargetVMSession
+
