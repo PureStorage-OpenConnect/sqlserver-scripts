@@ -203,4 +203,4 @@ $Stop = (Get-Date)
 
 
 
-Write-Output "The snapshot time takes...$(($Stop - $Start).Milliseconds)ms!"
+Write-Output "The snapshot time takes...$(($Stop - $Start).TotalMilliseconds)ms!"
