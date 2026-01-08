@@ -125,8 +125,7 @@ $FirstSnapStatus = Get-Pfa2ProtectionGroupSnapshotTransfer -Array $FlashArray -N
 
 if ($FirstSnapStatus.completed -ne $null) {     # If $FirstSnapStatus.completed, then it hasn't been fully replicated 
     $MostRecentSnapshot = $MostRecentSnapshots[0].name
-}
-else {
+} else {
     # Use prior snapshot instead
     $MostRecentSnapshot = $MostRecentSnapshots[1].name
 }
@@ -278,4 +277,5 @@ Remove-Pfa2Volume -Array $FlashArray -Name $NewClonedVolumeName
 
 # Clean up
 Remove-PSSession $TargetVMSession
+
 
