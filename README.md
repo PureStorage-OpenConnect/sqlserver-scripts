@@ -43,7 +43,8 @@ Array-based snapshots are used to decouple database operations from the size of 
 
 | Demo | Description |  |   |
 | ----------- | ----------- |  ----------- |  ----------- | 
-| **Volume Database Refresh on VMDK Virtual Disks** | Refresh a database from Volume snapshot where all of the databases's files are using a VMware VMDK Virtual Disk type on a single VMFS Datastore on the same Volume on the same FlashArray. | [More Info](./demos-sdk2/VMFS-VMDK%20Snapshot/) | [Sample Code](./demos-sdk2/VMFS-VMDK%20Snapshot/VMFS-VMDK%20Snapshot.ps1) |
+| **Volume Database Refresh on VMDK Virtual Disks** | Refresh a database from a Volume snapshot where all of the databases's files are using a VMware VMDK Virtual Disk type on a single VMFS Datastore on the same Volume on the same FlashArray. | [More Info](./demos-sdk2/VMFS-VMDK%20Snapshot/) | [Sample Code](./demos-sdk2/VMFS-VMDK%20Snapshot/VMFS-VMDK%20Snapshot.ps1) |
+| **Point in Time Recovery on VMDK Virtual Disks** | Combine a FlashArray snapshot with SQL Server 2022 T-SQL Snapshot Backup on a VMFS datastore for application-consistent snapshots and point-in-time recovery. | [More Info](./demos-sdk2/VMFS-VMDK%20Snapshot/) | [Sample Code](./demos-sdk2/VMFS-VMDK%20Snapshot/Point%20in%20Time%20Recovery%20-%20VMFS.ps1) |
 
 
 ## Using Snapshots for Databases on Hyper-V Cluster Shared Volumes (CSV)
