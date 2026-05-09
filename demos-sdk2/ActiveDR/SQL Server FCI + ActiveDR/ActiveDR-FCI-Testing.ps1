@@ -1,30 +1,45 @@
-####################################################################################################################
-####################################################################################################################
-##
-## ActiveDR failover testing for SQL Server Failover Cluster Instance
-## 
-## This demo script runs through two scenarios: -
-## 1. Failover of clustered SQL Server role to node on same array
-## 2. Failover of clustered SQL Server role to node on remote array
-##
-## The second test involves the following steps: -
-###### Stop clustered SQL Server role in FCI
-###### Demote source pod
-###### Promote target pod
-###### Move clustered role to node on target array
-###### Start up clustered SQL Server role
-##
-## Author - Andrew Pruski
-## apruski@purestorage.com
-##
-####################################################################################################################
-####################################################################################################################
+##############################################################################################################################
+# ActiveDR Failover Testing for SQL Server Failover Cluster Instance
+#
+# Scenario:
+#    This demo script runs through two scenarios:
+#       1. Failover of a clustered SQL Server role to a node on the same storage array
+#       2. Failover of a clustered SQL Server role to a node on a remote storage array
+#
+#    The remote array failover involves the following steps:
+#       - Stop the clustered SQL Server role in the FCI
+#       - Demote the source pod
+#       - Promote the target pod
+#       - Move the clustered role to a node on the target array
+#       - Start the clustered SQL Server role
+#
+# Disclaimer:
+#    This example script is provided AS-IS and meant to be a building block to be adapted to fit an individual
+#    organization's infrastructure.
+##############################################################################################################################
 
 
 
-# import powershell modules
+# Import PowerShell modules
 Import-Module FailoverClusters
-Import-Module PureStoragePowershellSDK2
+Import-Module PureStoragePowerShellSDK2
+
+
+
+# Variables
+$ClusterName        = "WindowsClusterName"
+$ClusterRole        = "SQL Server (MSSQLSERVER)"        # Clustered SQL Server role name
+$NodeSameArray      = "NodeOnSameArray"                 # Cluster node on the same storage array
+$NodeRemoteArray    = "NodeOnRemoteArray"               # Cluster node on the remote storage array
+$SourceFlashArrayIp = "flasharray1.example.com"         # Source FlashArray endpoint
+$SourcePodName      = "PodNameOnSourceArray"            # Pod name on the source FlashArray
+$TargetFlashArrayIp = "flasharray2.example.com"         # Target FlashArray endpoint
+$TargetPodName      = "PodNameOnTargetArray"            # Pod name on the target FlashArray
+
+
+
+# Set credentials
+$PureCred = Get-Credential
 
 
 
@@ -36,124 +51,95 @@ Import-Module PureStoragePowershellSDK2
 
 
 
-# set variables
-$ClusterName    = "WindowsClusterName"
-$ClusterRole    = "SQL Server (MSSQLSERVER)"
-$NodeSameArray  = "NodeOnSameArray"
-
-
-
-# confirm cluster
+# Confirm cluster
 Get-Cluster $ClusterName
 
 
 
-# confirm cluster nodes
+# Confirm cluster nodes
 Get-Cluster $ClusterName | Get-ClusterNode
 
 
 
-# confirm clustered SQL Server service
+# Confirm clustered SQL Server service
 Get-ClusterGroup -Cluster $ClusterName -Name $ClusterRole
 
 
 
-# test failing over clustered service to node on same storage array
+# Test failing over clustered service to node on same storage array
 Move-ClusterGroup -Cluster $ClusterName -Name $ClusterRole -Node $NodeSameArray
 
 
 
-# confirm clustered SQL Server service
+# Confirm clustered SQL Server service
 Get-ClusterGroup -Cluster $ClusterName -Name $ClusterRole
 
 
 
-################################################################################################################
+####################################################################################################################
 #
 # Performing failover to node on remote storage array
 #
-################################################################################################################
+####################################################################################################################
 
 
 
-# set source array details
-$SourceFlashArrayIp = "SourceFlashArrayIpAddress"
-$SourcePodName      = "PodNameOnSourceArray"
-
-
-
-# set Pure credentials
-$PureCred = Get-Credential
-
-
-
-# connect to source flasharray
+# Connect to the source FlashArray
 $SourceFlashArray = Connect-Pfa2Array -EndPoint $SourceFlashArrayIp -Credential $PureCred -IgnoreCertificateError
 
 
 
-# confirm pod replication status
+# Confirm pod replication status
 Get-Pfa2PodReplicaLink -Array $SourceFlashArray -LocalPodName $SourcePodName
 
 
 
-# confirm clustered SQL Server service
+# Confirm clustered SQL Server service
 Get-ClusterGroup -Cluster $ClusterName -Name $ClusterRole
 
 
 
-# stop clustered service - taking volumes offline
+# Stop clustered service - taking volumes offline
 Stop-ClusterGroup -Cluster $ClusterName -Name $ClusterRole
 
 
 
-# confirm clustered service offline
+# Confirm clustered service offline
 Get-ClusterGroup -Cluster $ClusterName -Name $ClusterRole
 
 
 
-# demote Production Pod with Quiesce
+# Demote the source pod with quiesce
 Update-Pfa2Pod -Array $SourceFlashArray -Name $SourcePodName -Quiesce $True -RequestedPromotionState "demoted"
 
 
 
-# confirm Production Pod status - PromotionStatus : demoted
+# Confirm source pod status - PromotionStatus : demoted
 Get-Pfa2Pod -Array $SourceFlashArray -Name $SourcePodName
 
 
 
-# set target array details
-$TargetFlashArrayIp = "TargetFlashArrayIpAddress"
-$TargetPodName      = "PodNameOnTargetArray"
-
-
-
-# connect to target flasharray
+# Connect to the target FlashArray
 $TargetFlashArray = Connect-Pfa2Array -EndPoint $TargetFlashArrayIp -Credential $PureCred -IgnoreCertificateError
 
 
 
-# promote pod
+# Promote the target pod
 Update-Pfa2Pod -Array $TargetFlashArray -Name $TargetPodName -RequestedPromotionState "promoted"
 
 
 
-# confirm pod promoted - PromotionStatus : promoted
-Get-Pfa2Pod -Array $FlashArray -Name $TargetPodName
+# Confirm pod promoted - PromotionStatus : promoted
+Get-Pfa2Pod -Array $TargetFlashArray -Name $TargetPodName
 
 
 
-# set node name on remote array
-$NodeSameArray2 = "NodeOnRemoteArray"
+# Move clustered role to node on the target array
+Move-ClusterGroup -Cluster $ClusterName -Name $ClusterRole -Node $NodeRemoteArray
 
 
 
-# move clustered role to node on target array
-Move-ClusterGroup -Cluster $ClusterName -Name $ClusterRole -Node $NodeSameArray2
-
-
-
-# start the clustered role
+# Start the clustered role
 Start-ClusterGroup -Cluster $ClusterName -Name $ClusterRole
 
 
