@@ -81,7 +81,7 @@ Get-DbaDatabase -SqlInstance $SqlInstance -Database $DbName |
 
 # Connect to the FlashArray's REST API
 $Credential = Get-Credential -UserName "$env:USERNAME" -Message 'Enter your credential information...'
-$FlashArray = Connect-Pfa2Array –EndPoint $ArrayName -Credential $Credential -IgnoreCertificateError
+$FlashArray = Connect-Pfa2Array -EndPoint $ArrayName -Credential $Credential -IgnoreCertificateError
 
 
 
@@ -306,7 +306,7 @@ Invoke-DbaQuery -SqlInstance $SqlInstance -Database master -Query $Query
 
 
 # Verify Restore
-Invoke-DbaQuery -SqlInstance $SqlInstance -Database $DbName -Query "SELECT TOP 10 * FROM dbo.Recipes"
+Invoke-DbaQuery -SqlInstance $SqlInstance -Database $DbName -Query "SELECT TOP 10 * FROM Sales.Customer"
 
 
 
