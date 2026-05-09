@@ -52,7 +52,7 @@ $ProductionSQLServerSession = New-PSSession -ComputerName $ProductionSQLServer
 
 # Connect to FlashArray
 $Credential = Get-Credential
-$FlashArray = Connect-Pfa2Array -Endpoint $DRArrayName -Credential $Credential -IgnoreCertificateError
+$FlashArray = Connect-Pfa2Array -Endpoint $ProductionArrayName -Credential $Credential -IgnoreCertificateError
 
 
 

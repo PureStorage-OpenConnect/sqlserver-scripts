@@ -61,8 +61,8 @@ $SqlInstance = Connect-DbaInstance -SqlInstance $TargetSQLServer -TrustServerCer
 
 # Connect to the FlashArrays' REST APIs
 $Credential = Get-Credential
-$FlashArray1 = Connect-Pfa2Array –EndPoint $ArrayName1 -Credential $Credential -IgnoreCertificateError
-$FlashArray2 = Connect-Pfa2Array –EndPoint $ArrayName2 -Credential $Credential -IgnoreCertificateError
+$FlashArray1 = Connect-Pfa2Array -EndPoint $ArrayName1 -Credential $Credential -IgnoreCertificateError
+$FlashArray2 = Connect-Pfa2Array -EndPoint $ArrayName2 -Credential $Credential -IgnoreCertificateError
 
 
 

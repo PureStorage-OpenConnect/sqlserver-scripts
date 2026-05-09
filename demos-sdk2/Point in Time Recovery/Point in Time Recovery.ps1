@@ -56,7 +56,7 @@ Get-DbaDatabase -SqlInstance $SqlInstance -Database $DbName |
 
 # Connect to the FlashArray's REST API
 $Credential = Get-Credential
-$FlashArray = Connect-Pfa2Array –EndPoint $ArrayName -Credential $Credential -IgnoreCertificateError
+$FlashArray = Connect-Pfa2Array -EndPoint $ArrayName -Credential $Credential -IgnoreCertificateError
 
 
 

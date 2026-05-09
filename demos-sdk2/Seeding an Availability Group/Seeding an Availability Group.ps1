@@ -63,7 +63,7 @@ $SqlInstanceSecondary = Connect-DbaInstance -SqlInstance $SecondarySqlServer -Tr
 
 # Connect to the FlashArray with for the AG Primary
 $Credential = Get-Credential
-$FlashArrayPrimary = Connect-Pfa2Array –EndPoint $PrimaryArrayName -Credential $Credential -IgnoreCertificateError
+$FlashArrayPrimary = Connect-Pfa2Array -EndPoint $PrimaryArrayName -Credential $Credential -IgnoreCertificateError
 
 
 
@@ -89,7 +89,7 @@ Invoke-DbaQuery -SqlInstance $SqlInstancePrimary -Query $Query -Verbose
 
 
 # Connect to the FlashArray's REST API where the secondary's data is located
-$FlashArraySecondary = Connect-Pfa2Array –EndPoint $SecondaryArrayName -Credential $Credential -IgnoreCertificateError
+$FlashArraySecondary = Connect-Pfa2Array -EndPoint $SecondaryArrayName -Credential $Credential -IgnoreCertificateError
 
 
 # This is a loop that will block until the snapshot has completed replicating between the two arrays. 

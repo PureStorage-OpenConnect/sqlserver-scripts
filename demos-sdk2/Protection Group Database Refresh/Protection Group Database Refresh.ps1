@@ -64,7 +64,7 @@ Invoke-Command -Session $TargetSession -ScriptBlock { Get-Disk | Where-Object { 
 
 
 # Connect to the FlashArray's REST API
-$FlashArray = Connect-Pfa2Array –EndPoint $ArrayName -Credential $Credential -IgnoreCertificateError
+$FlashArray = Connect-Pfa2Array -EndPoint $ArrayName -Credential $Credential -IgnoreCertificateError
 
 
 

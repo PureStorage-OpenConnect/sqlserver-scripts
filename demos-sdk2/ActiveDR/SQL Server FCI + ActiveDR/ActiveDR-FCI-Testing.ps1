@@ -83,7 +83,7 @@ $SourcePodName      = "PodNameOnSourceArray"
 
 
 # set Pure credentials
-$PureCred = Get-Credentials
+$PureCred = Get-Credential
 
 
 

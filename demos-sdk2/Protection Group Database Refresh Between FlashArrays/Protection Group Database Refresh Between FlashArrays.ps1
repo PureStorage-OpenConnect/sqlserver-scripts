@@ -53,12 +53,12 @@ $Credential = Get-Credential
 
 
 # Connect to the source FlashArray's REST API
-$SourceFlashArray = Connect-Pfa2Array –EndPoint $TargetArrayName -Credential $Credential -IgnoreCertificateError
+$SourceFlashArray = Connect-Pfa2Array -EndPoint $SourceArrayName -Credential $Credential -IgnoreCertificateError
 
 
 
 # Take a snapshot of the Protection Group and replicate it to the target array
-$Snapshot = New-Pfa2ProtectionGroupSnapshot -Array $FlashArray -SourceName $ProtectionGroupName -ForReplication $true -ReplicateNow $true
+$Snapshot = New-Pfa2ProtectionGroupSnapshot -Array $SourceFlashArray -SourceName $ProtectionGroupName -ForReplication $true -ReplicateNow $true
 
 
 
@@ -80,7 +80,7 @@ Invoke-Command -Session $TargetSession -ScriptBlock { Get-Disk | Where-Object { 
 
 
 # Connect to the target FlashArray's REST API
-$TargetFlashArray = Connect-Pfa2Array –EndPoint $TargetArrayName -Credential $Credential -IgnoreCertificateError
+$TargetFlashArray = Connect-Pfa2Array -EndPoint $TargetArrayName -Credential $Credential -IgnoreCertificateError
 
 
 
